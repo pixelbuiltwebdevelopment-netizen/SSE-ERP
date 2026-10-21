@@ -1,10 +1,13 @@
 const mongoose = require('mongoose');
 
-const locationSchema = new mongoose.Schema({
-  lat: { type: Number },
-  lng: { type: Number },
-  address: { type: String }
-}, { _id: false });
+const locationSchema = new mongoose.Schema(
+  {
+    lat: { type: Number },
+    lng: { type: Number },
+    address: { type: String },
+  },
+  { _id: false }
+);
 
 const ticketSchema = new mongoose.Schema(
   {
@@ -17,7 +20,7 @@ const ticketSchema = new mongoose.Schema(
       type: String,
       enum: ['Normal Ticket', 'Rewinding', 'Outdoor', 'AMC', 'Panel Board'],
       required: [true, 'Ticket type is required'],
-      default: 'Normal Ticket'
+      default: 'Normal Ticket',
     },
     subject: {
       type: String,
@@ -27,7 +30,7 @@ const ticketSchema = new mongoose.Schema(
     companyId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Company',
-      required: [true, 'Company is required']
+      required: [true, 'Company is required'],
     },
     status: {
       type: String,
@@ -36,32 +39,34 @@ const ticketSchema = new mongoose.Schema(
     },
     startTime: {
       type: Date,
-      default: null
+      default: null,
     },
     startLocation: {
       type: locationSchema,
-      default: null
+      default: null,
     },
     stopTime: {
       type: Date,
-      default: null
+      default: null,
     },
     stopLocation: {
       type: locationSchema,
-      default: null
+      default: null,
     },
     resolutionNotes: {
       type: String,
-      default: ''
+      default: '',
     },
-    resolutionImages: [{
-      type: String
-    }],
+    resolutionImages: [
+      {
+        type: String,
+      },
+    ],
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
       required: true,
-      index: true,
+      index: true, // Index is kept here
     },
     departmentId: {
       type: mongoose.Schema.Types.ObjectId,
@@ -87,7 +92,7 @@ const ticketSchema = new mongoose.Schema(
   }
 );
 
-ticketSchema.index({ createdBy: 1 });
+// Removed duplicate: ticketSchema.index({ createdBy: 1 });
 ticketSchema.index({ departmentId: 1, branchId: 1, teamId: 1 });
 ticketSchema.index({ companyId: 1 });
 
