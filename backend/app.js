@@ -73,6 +73,16 @@ app.use(mongoSanitize());
 // Global API Rate Limiter
 app.use('/api', apiRateLimiter);
 
+// -------------------------------------------------------------
+// Root URL check (Fixes "Cannot GET /")
+// -------------------------------------------------------------
+app.get('/', (req, res) => {
+  res.status(200).json({
+    status: 'success',
+    message: 'ERP Authorization Server is running live on Render! 🚀',
+  });
+});
+
 // Health Check Endpoint
 app.get('/api/health', (req, res) => {
   res.status(200).json({ status: 'OK', timestamp: new Date() });
