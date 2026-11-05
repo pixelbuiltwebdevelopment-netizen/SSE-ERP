@@ -26,32 +26,49 @@ const ERP = {
   purpleBg: '#EDE9FE',
 };
 
-// Safe date normalization helper to avoid UTC offset rollback issues
-const parseLocalDate = (dateVal) => {
+// Safe date normalization helper to avoid UTC offset rollback / spillover issues
+const parseLocalDate = (dateVal, isEnd = false) => {
   if (!dateVal) return new Date();
-  if (typeof dateVal === 'string' && dateVal.length === 10) {
-    const [y, m, d] = dateVal.split('-').map(Number);
-    return new Date(y, m - 1, d, 0, 0, 0, 0);
+  if (dateVal instanceof Date) {
+    const d = new Date(dateVal.getTime());
+    return isNaN(d.getTime()) ? new Date() : d;
+  }
+  if (typeof dateVal === 'string') {
+    const trimmed = dateVal.trim();
+    // Parse YYYY-MM-DD and optional time components regardless of UTC / ISO formatting
+    const match = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T\s](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?)?/);
+    if (match) {
+      const y = parseInt(match[1], 10);
+      const m = parseInt(match[2], 10) - 1;
+      const d = parseInt(match[3], 10);
+
+      const hasTime = match[4] !== undefined;
+      if (!hasTime) {
+        return isEnd ? new Date(y, m, d, 23, 59, 59, 999) : new Date(y, m, d, 0, 0, 0, 0);
+      }
+
+      const hours = parseInt(match[4], 10);
+      const minutes = parseInt(match[5] || '0', 10);
+      const seconds = parseInt(match[6] || '0', 10);
+      const ms = parseInt((match[7] || '0').padEnd(3, '0').slice(0, 3), 10);
+
+      // If it represents end-of-day in UTC (23:59:59.999Z), normalize to end of local day y-m-d
+      if (isEnd && hours === 23 && minutes >= 59) {
+        return new Date(y, m, d, 23, 59, 59, 999);
+      }
+      // If it represents start-of-day in UTC (00:00:00.000Z), normalize to start of local day y-m-d
+      if (!isEnd && hours === 0 && minutes === 0 && seconds === 0) {
+        return new Date(y, m, d, 0, 0, 0, 0);
+      }
+
+      return new Date(y, m, d, hours, minutes, seconds, ms);
+    }
   }
   const d = new Date(dateVal);
   return isNaN(d.getTime()) ? new Date() : d;
 };
 
 const CalendarMainPage = () => {
-  let navigate;
-  try {
-    navigate = useNavigate();
-  } catch {
-    navigate = null;
-  }
-
-  const handleBack = () => {
-    if (navigate) {
-      navigate(-1);
-    } else {
-      window.history.back();
-    }
-  };
 
   const { can } = usePermission();
   const socket = useSocket();
@@ -103,10 +120,21 @@ const CalendarMainPage = () => {
     else if (/meeting/i.test(rawType)) normalizedType = 'Meeting';
     else normalizedType = 'Other';
 
-    const start = parseLocalDate(e.startDate || e.date || e.start);
-    const end = parseLocalDate(e.endDate || e.startDate || e.date || e.start);
+    const start = parseLocalDate(e.startDate || e.date || e.start, false);
+    let end = parseLocalDate(e.endDate || e.startDate || e.date || e.start, true);
 
-    if (normalizedType === 'Holiday' && end.getHours() === 0 && end.getMinutes() === 0) {
+    // Identify if the event was intended as a single-day event
+    const rawStartStr = String(e.startDate || e.date || e.start || '').split('T')[0];
+    const rawEndStr = String(e.endDate || e.startDate || e.date || e.start || '').split('T')[0];
+    const isSingleDay = e.daySpan === 'single' || (rawStartStr && rawEndStr && rawStartStr === rawEndStr);
+
+    if (isSingleDay) {
+      if (e.dayType === 'half') {
+        end = new Date(start.getFullYear(), start.getMonth(), start.getDate(), end.getHours(), end.getMinutes(), end.getSeconds(), end.getMilliseconds());
+      } else {
+        end = new Date(start.getFullYear(), start.getMonth(), start.getDate(), 23, 59, 59, 999);
+      }
+    } else if (normalizedType === 'Holiday' && end.getHours() === 0 && end.getMinutes() === 0) {
       end.setHours(23, 59, 59, 999);
     }
 
@@ -115,9 +143,9 @@ const CalendarMainPage = () => {
       title: e.title || e.name || e.holidayName || 'Scheduled Event',
       eventType: normalizedType,
       customClassification: e.customClassification || (normalizedType === 'Other' ? rawType : ''),
-      daySpan: e.daySpan || (start.toDateString() === end.toDateString() ? 'single' : 'multiple'),
-      dayType: e.dayType || 'full',
-      halfDaySession: e.halfDaySession || '',
+      daySpan: isSingleDay ? 'single' : (e.daySpan || (start.toDateString() === end.toDateString() ? 'single' : 'multiple')),
+      dayType: e.dayType || (e.dayCoverage === 'FirstHalf' || e.dayCoverage === 'SecondHalf' ? 'half' : 'full'),
+      halfDaySession: e.halfDaySession || (e.dayCoverage === 'SecondHalf' ? 'Second Half' : e.dayCoverage === 'FirstHalf' ? 'First Half' : ''),
       startDate: start,
       endDate: end,
       description: e.description || e.remarks || e.note || '',
@@ -245,20 +273,19 @@ const CalendarMainPage = () => {
         finalEnd = `${effectiveEndDate}T23:59:59.999Z`;
       }
 
-      const finalClassification =
-        formData.eventType === 'Other'
-          ? (formData.customClassification.trim() || 'Other')
-          : formData.eventType;
-
       const payload = {
         title: formData.title.trim(),
-        eventType: finalClassification,
+        eventType: formData.eventType,
         customClassification: formData.eventType === 'Other' ? formData.customClassification.trim() : '',
         startDate: finalStart,
         endDate: finalEnd,
         daySpan: formData.daySpan,
         dayType: formData.dayType,
         halfDaySession: formData.dayType === 'half' ? formData.halfDaySession : null,
+        isFullDay: formData.dayType === 'full',
+        dayCoverage: formData.dayType === 'half'
+          ? (formData.halfDaySession === 'Second Half' ? 'SecondHalf' : 'FirstHalf')
+          : 'FullDay',
         description: formData.description,
         isHoliday: formData.eventType === 'Holiday',
         isPublic: true,
@@ -434,14 +461,7 @@ const CalendarMainPage = () => {
         }
       `}</style>
 
-      <div
-        className="container-fluid"
-        style={{
-          backgroundColor: ERP.mainBg,
-          minHeight: '100vh',
-          padding: '14px 16px',
-        }}
-      >
+      <div className="erp-fade-in pb-4">
         {/* Top Header Card with Prominent Big Angle Back Button */}
         <div
           className="card shadow-sm border-0 mb-3 rounded-3"
@@ -452,16 +472,6 @@ const CalendarMainPage = () => {
         >
           <div className="d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-2">
             <div className="d-flex align-items-center gap-3">
-              {/* Big Size Back Angle Button */}
-              <button
-                type="button"
-                className="erp-big-angle-btn shadow-sm"
-                onClick={handleBack}
-                title="Go Back"
-              >
-                ‹
-              </button>
-
               <div>
                 <div className="d-flex align-items-center gap-1.5 mb-0.5">
                   <span

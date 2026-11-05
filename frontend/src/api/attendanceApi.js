@@ -43,8 +43,8 @@ export const getAllAttendance = async (params) => {
   return response.data;
 };
 
-export const getMissingPunchOuts = async (params) => {
-  const response = await api.get('/attendance/missing-punch-outs', { params });
+export const getTeamAttendanceRoster = async (params) => {
+  const response = await api.get('/attendance/team-roster', { params });
   return response.data;
 };
 
@@ -63,29 +63,9 @@ export const getDailyReport = async (params) => {
   return response.data;
 };
 
-export const getAttendanceAnalytics = async (params) => {
-  const response = await api.get('/attendance/analytics', { params });
-  return response.data;
-};
-
 // Shifts & Policies
 export const getShifts = async () => {
   const response = await api.get('/attendance/shifts');
-  return response.data;
-};
-
-export const createShift = async (shiftData) => {
-  const response = await api.post('/attendance/shifts', shiftData);
-  return response.data;
-};
-
-export const updateShift = async (shiftId, shiftData) => {
-  const response = await api.patch(`/attendance/shifts/${shiftId}`, shiftData);
-  return response.data;
-};
-
-export const deleteShift = async (shiftId) => {
-  const response = await api.delete(`/attendance/shifts/${shiftId}`);
   return response.data;
 };
 
@@ -119,44 +99,3 @@ export const rejectOvertime = async (requestId, data) => {
   const response = await api.patch(`/attendance/overtime/${requestId}/reject`, data);
   return response.data;
 };
-
-// Corrections Workflow
-export const getCorrections = async (params) => {
-  const response = await api.get('/attendance/corrections', { params });
-  return response.data;
-};
-
-export const requestCorrection = async (data) => {
-  const response = await api.post('/attendance/corrections', data);
-  return response.data;
-};
-
-export const approveCorrection = async (id, data) => {
-  const response = await api.patch(`/attendance/corrections/${id}/approve`, data);
-  return response.data;
-};
-
-export const rejectCorrection = async (id, data) => {
-  const response = await api.patch(`/attendance/corrections/${id}/reject`, data);
-  return response.data;
-};
-
-// Notifications
-export const getNotifications = async (params) => {
-  const response = await api.get('/notifications', { params });
-  return response.data;
-};
-
-export const markNotificationAsRead = async (id) => {
-  const response = await api.patch(`/notifications/${id}/read`);
-  return response.data;
-};
-
-export const markAsRead = markNotificationAsRead;
-
-export const markAllNotificationsAsRead = async () => {
-  const response = await api.patch('/notifications/read-all');
-  return response.data;
-};
-
-export const markAllAsRead = markAllNotificationsAsRead;

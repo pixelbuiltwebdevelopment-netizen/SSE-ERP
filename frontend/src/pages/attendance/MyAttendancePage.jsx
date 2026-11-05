@@ -4,7 +4,6 @@ import {
   punchOut,
   getMyToday,
   getMyAttendanceHistory,
-  requestCorrection,
   requestOvertime,
 } from '../../api/attendanceApi';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
@@ -13,6 +12,8 @@ import { useAuth } from '../../hooks/useAuth';
 import AttendanceCalendarView from './components/AttendanceCalendarView';
 import { exportAttendancePDF, exportAttendanceCSV } from '../../utils/exportUtils';
 import Pagination from '../../components/common/Pagination';
+import BackButton from '../../components/common/BackButton';
+import { resolveAddressFromCoords } from '../../utils/reverseGeocode';
 
 // ERP Design System Tokens
 const THEME = {
@@ -68,16 +69,7 @@ const MyAttendancePage = ({ hideHeader = false }) => {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [liveElapsedSeconds, setLiveElapsedSeconds] = useState(0);
 
-  // Modals
-  const [showCorrectionModal, setShowCorrectionModal] = useState(false);
-  const [correctionForm, setCorrectionForm] = useState({
-    date: new Date().toISOString().split('T')[0],
-    correctionType: 'MISSED_PUNCH_OUT',
-    requestedPunchIn: '',
-    requestedPunchOut: '',
-    reason: '',
-  });
-
+  // Overtime Modal
   const [showOvertimeModal, setShowOvertimeModal] = useState(false);
   const [overtimeForm, setOvertimeForm] = useState({
     attendanceId: '',
@@ -175,24 +167,27 @@ const MyAttendancePage = ({ hideHeader = false }) => {
     }
   };
 
-  // Browser Geolocation
+  // Browser Geolocation with Reverse Geocoding
   const getCoordinates = () => {
     return new Promise((resolve) => {
       if (!navigator.geolocation) {
-        return resolve({ lat: 17.385, lng: 78.4867, address: 'Office Terminal' });
+        return resolve({ lat: 17.4485, lng: 78.3908, address: 'Madhapur, Hyderabad' });
       }
       navigator.geolocation.getCurrentPosition(
-        (pos) => {
+        async (pos) => {
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
+          const address = await resolveAddressFromCoords(lat, lng);
           resolve({
-            lat: pos.coords.latitude,
-            lng: pos.coords.longitude,
-            address: 'Verified Geolocation',
+            lat,
+            lng,
+            address: address || 'Madhapur, Hyderabad',
           });
         },
         () => {
-          resolve({ lat: 17.385, lng: 78.4867, address: 'Office Terminal' });
+          resolve({ lat: 17.4485, lng: 78.3908, address: 'Madhapur, Hyderabad' });
         },
-        { timeout: 5000 }
+        { timeout: 6000, enableHighAccuracy: true }
       );
     });
   };
@@ -260,19 +255,6 @@ const MyAttendancePage = ({ hideHeader = false }) => {
     return `${hours}h ${minutes}m remaining`;
   }, [todayData, currentTime]);
 
-  const handleCorrectionSubmit = async (e) => {
-    e.preventDefault();
-    try {
-      const res = await requestCorrection(correctionForm);
-      if (res && res.success) {
-        alert('Correction request submitted for approval.');
-        setShowCorrectionModal(false);
-      }
-    } catch (err) {
-      alert(err.response?.data?.message || 'Submission failed.');
-    }
-  };
-
   const handleOvertimeSubmit = async (e) => {
     e.preventDefault();
     try {
@@ -290,7 +272,8 @@ const MyAttendancePage = ({ hideHeader = false }) => {
     <div style={{ backgroundColor: THEME.surface, minHeight: '100%' }}>
       {!hideHeader && (
         <div className="pb-3 mb-4 border-bottom" style={{ borderColor: THEME.border }}>
-          <div className="d-flex align-items-center gap-2 mb-1">
+          <div className="d-flex align-items-center gap-2.5 mb-1">
+            <BackButton fallback="/attendance" tooltip="Back to Attendance Overview" />
             <span style={{ fontSize: '1.25rem' }}>⏱️</span>
             <h4 className="fw-bold mb-0" style={{ color: THEME.navy, letterSpacing: '-0.02em' }}>
               My Attendance & Punch Terminal
@@ -688,16 +671,16 @@ const MyAttendancePage = ({ hideHeader = false }) => {
                     style={{ backgroundColor: '#FFFFFF', border: `1px solid ${THEME.border}` }}
                   >
                     <div className="d-flex align-items-center gap-1.5 mb-1">
-                      <span style={{ fontSize: '13px' }}>☕</span>
+                      <span style={{ fontSize: '13px' }}>🚪</span>
                       <span className="text-muted" style={{ fontSize: '11px', fontWeight: 600 }}>
-                        Lunch Break
+                        Early Departure
                       </span>
                     </div>
                     <div className="fw-bold" style={{ color: THEME.navy, fontSize: '14px' }}>
-                      {todayData?.shift?.unpaidBreakMinutes || 60} mins
+                      {todayData?.shift?.earlyDepartureThresholdMinutes || 30} mins
                     </div>
                     <small className="text-muted" style={{ fontSize: '10px' }}>
-                      Unpaid interval
+                      Departure threshold
                     </small>
                   </div>
                 </div>
@@ -725,17 +708,8 @@ const MyAttendancePage = ({ hideHeader = false }) => {
             </div>
 
             {/* Quick Actions Footer */}
-            <div className="d-flex gap-2 pt-2 border-top" style={{ borderColor: THEME.border }}>
-              <button
-                className="btn btn-sm btn-outline-secondary flex-fill d-inline-flex align-items-center justify-content-center gap-1.5 shadow-none"
-                style={{ fontSize: '12px', height: '36px', borderRadius: '6px', borderColor: THEME.border }}
-                onClick={() => setShowCorrectionModal(true)}
-              >
-                <span>✏️</span>
-                <span>Request Correction</span>
-              </button>
-
-              {todaysAttendance && todaysAttendance.workingHours >= 8 && (
+            {todaysAttendance && todaysAttendance.workingHours >= 8 && (
+              <div className="d-flex gap-2 pt-2 border-top" style={{ borderColor: THEME.border }}>
                 <button
                   className="btn btn-sm btn-outline-primary flex-fill d-inline-flex align-items-center justify-content-center gap-1.5 shadow-none"
                   style={{ fontSize: '12px', height: '36px', borderRadius: '6px', borderColor: THEME.primary }}
@@ -751,8 +725,8 @@ const MyAttendancePage = ({ hideHeader = false }) => {
                   <span>⏱️</span>
                   <span>Claim Overtime</span>
                 </button>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -994,125 +968,6 @@ const MyAttendancePage = ({ hideHeader = false }) => {
           </>
         )}
       </div>
-
-      {/* Request Correction Modal */}
-      {showCorrectionModal && (
-        <div
-          className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center p-3"
-          style={{
-            backgroundColor: 'rgba(15, 23, 42, 0.65)',
-            backdropFilter: 'blur(3px)',
-            zIndex: 1060,
-          }}
-          onClick={() => setShowCorrectionModal(false)}
-        >
-          <div
-            className="p-4 rounded-3 shadow-lg"
-            style={{
-              backgroundColor: '#FFFFFF',
-              width: '100%',
-              maxWidth: '460px',
-              border: `1px solid ${THEME.border}`,
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="d-flex justify-content-between align-items-center pb-3 mb-3 border-bottom" style={{ borderColor: THEME.border }}>
-              <div>
-                <h6 className="fw-bold mb-0" style={{ color: THEME.navy }}>
-                  Request Attendance Adjustment
-                </h6>
-                <small className="text-secondary">Submit punch timing discrepancy for review</small>
-              </div>
-              <button className="btn-close" onClick={() => setShowCorrectionModal(false)}></button>
-            </div>
-
-            <form onSubmit={handleCorrectionSubmit}>
-              <div className="mb-3">
-                <label className="form-label small fw-semibold">Attendance Date</label>
-                <input
-                  type="date"
-                  className="form-control form-control-sm"
-                  value={correctionForm.date}
-                  onChange={(e) => setCorrectionForm({ ...correctionForm, date: e.target.value })}
-                  style={{ borderColor: THEME.border }}
-                  required
-                />
-              </div>
-
-              <div className="mb-3">
-                <label className="form-label small fw-semibold">Dispute Category</label>
-                <select
-                  className="form-select form-select-sm"
-                  value={correctionForm.correctionType}
-                  onChange={(e) => setCorrectionForm({ ...correctionForm, correctionType: e.target.value })}
-                  style={{ borderColor: THEME.border }}
-                >
-                  <option value="MISSED_PUNCH_IN">Missed Punch-In</option>
-                  <option value="MISSED_PUNCH_OUT">Missed Punch-Out</option>
-                  <option value="INCORRECT_HOURS">Incorrect Working Hours</option>
-                  <option value="STATUS_DISPUTE">Incorrect Attendance Status</option>
-                  <option value="OTHER">Other Discrepancy</option>
-                </select>
-              </div>
-
-              <div className="row g-2 mb-3">
-                <div className="col-6">
-                  <label className="form-label small fw-semibold">Effective Punch-In</label>
-                  <input
-                    type="time"
-                    className="form-control form-control-sm"
-                    value={correctionForm.requestedPunchIn}
-                    onChange={(e) => setCorrectionForm({ ...correctionForm, requestedPunchIn: e.target.value })}
-                    style={{ borderColor: THEME.border }}
-                  />
-                </div>
-                <div className="col-6">
-                  <label className="form-label small fw-semibold">Effective Punch-Out</label>
-                  <input
-                    type="time"
-                    className="form-control form-control-sm"
-                    value={correctionForm.requestedPunchOut}
-                    onChange={(e) => setCorrectionForm({ ...correctionForm, requestedPunchOut: e.target.value })}
-                    style={{ borderColor: THEME.border }}
-                  />
-                </div>
-              </div>
-
-              <div className="mb-3">
-                <label className="form-label small fw-semibold">
-                  Reason for Adjustment <span className="text-danger">*</span>
-                </label>
-                <textarea
-                  className="form-control form-control-sm"
-                  rows="3"
-                  placeholder="Explain why punch wasn't registered properly..."
-                  value={correctionForm.reason}
-                  onChange={(e) => setCorrectionForm({ ...correctionForm, reason: e.target.value })}
-                  style={{ borderColor: THEME.border }}
-                  required
-                ></textarea>
-              </div>
-
-              <div className="d-flex justify-content-end gap-2 mt-4">
-                <button
-                  type="button"
-                  className="btn btn-sm btn-light border"
-                  onClick={() => setShowCorrectionModal(false)}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="btn btn-sm btn-primary"
-                  style={{ backgroundColor: THEME.primary, borderColor: THEME.primary }}
-                >
-                  Submit Request
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
       {/* Request Overtime Modal */}
       {showOvertimeModal && (

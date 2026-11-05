@@ -17,6 +17,7 @@ import ModuleListPage from '../pages/modules/ModuleListPage';
 import AuditLogPage from '../pages/audit/AuditLogPage';
 import AccessDeniedPage from '../pages/access-denied/AccessDeniedPage';
 import CompanyListPage from '../pages/companies/CompanyListPage';
+import CompanyDetailPage from '../pages/companies/CompanyDetailPage';
 import CompanyCreatePage from '../pages/companies/CompanyCreatePage';
 import CompanyEditPage from '../pages/companies/CompanyEditPage';
 import AttendanceMainPage from '../pages/attendance/AttendanceMainPage';
@@ -35,46 +36,30 @@ import SalaryDashboard from '../pages/salary/SalaryDashboard';
 
 const AppRoutes = () => {
   const { loading: authLoading, isAuthenticated } = useAuth();
-  const [minLoadingDone, setMinLoadingDone] = useState(false);
   const [isDelayed, setIsDelayed] = useState(false);
 
-  // Check if a saved token exists in local storage
   const hasToken = Boolean(
     localStorage.getItem('token') || localStorage.getItem('authToken')
   );
 
   useEffect(() => {
-    // ⚡ OPTIMIZATION:
-    // If NO token exists (first visit or logged out), open login in 300ms.
-    // If token exists, display the branded spinner for 3s while verifying ERP session.
-    const splashDuration = hasToken ? 3000 : 1000;
+    // Show recovery option only if connection genuinely hangs over 6 seconds
+    const timer = setTimeout(() => {
+      if (authLoading) setIsDelayed(true);
+    }, 6000);
 
-    const timerSplash = setTimeout(() => {
-      setMinLoadingDone(true);
-    }, splashDuration);
+    return () => clearTimeout(timer);
+  }, [authLoading]);
 
-    // Show warning only if backend connection takes longer than 5 full seconds
-    const timer5s = setTimeout(() => {
-      setIsDelayed(true);
-    }, 5000);
-
-    return () => {
-      clearTimeout(timerSplash);
-      clearTimeout(timer5s);
-    };
-  }, [hasToken]);
-
-  // Show loading spinner during splash or while authenticating a logged-in session
-  const isAppLoading = !minLoadingDone || (hasToken && authLoading);
-
-  if (isAppLoading) {
+  // Show authenticating spinner only when verifying saved token
+  if (hasToken && authLoading) {
     return (
-      <LoadingSpinner 
-        text="LOADING" 
+      <LoadingSpinner
+        text="Authenticating ERP Session"
         subtext={
-          isDelayed 
-            ? "Authentication is taking longer than expected..." 
-            : "Authenticating ERP Session..."
+          isDelayed
+            ? 'Authentication is taking longer than expected. Check your network or retry.'
+            : 'Verifying cryptographic security token...'
         }
         showRetry={isDelayed}
         onRetry={() => window.location.reload()}
@@ -113,6 +98,7 @@ const AppRoutes = () => {
 
           <Route element={<ProtectedRoute module="companies" action="view" />}>
             <Route path="/companies" element={<CompanyListPage />} />
+            <Route path="/companies/:id" element={<CompanyDetailPage />} />
           </Route>
 
           <Route element={<ProtectedRoute module="companies" action="create" />}>
@@ -162,10 +148,10 @@ const AppRoutes = () => {
         </Route>
       </Route>
 
-      {/* Smart Fallback: Go to Dashboard if authenticated, else go straight to Login */}
-      <Route 
-        path="*" 
-        element={<Navigate to={isAuthenticated ? "/dashboard" : "/login"} replace />} 
+      {/* Smart Fallback */}
+      <Route
+        path="*"
+        element={<Navigate to={isAuthenticated ? '/dashboard' : '/login'} replace />}
       />
     </Routes>
   );

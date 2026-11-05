@@ -1,13 +1,18 @@
 import axiosClient from './axiosClient';
 
 export const erpApi = {
-
+  // ── TICKETS: Service Desk & Field Tickets ───────────────────────
   getTickets: (params) => axiosClient.get('/tickets', { params }),
+  getTicketById: (id) => axiosClient.get(`/tickets/${id}`),
   createTicket: (data) => axiosClient.post('/tickets', data),
   updateTicket: (id, data) => axiosClient.put(`/tickets/${id}`, data),
   deleteTicket: (id) => axiosClient.delete(`/tickets/${id}`),
   startTicket: (id, data) => axiosClient.post(`/tickets/${id}/start`, data),
   stopTicket: (id, data) => axiosClient.post(`/tickets/${id}/stop`, data),
+  uploadTicketImage: (formData) =>
+    axiosClient.post('/tickets/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
   getCompaniesForTicket: () => axiosClient.get('/tickets/companies'),
 
   // ── SALARY: Admin APIs ──────────────────────────────────────────

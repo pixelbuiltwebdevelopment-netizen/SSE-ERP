@@ -7,8 +7,8 @@ const { processAutoPunchOut } = require('./automaticPunchOutService');
 const initCronJobs = () => {
   console.log('[Cron] Initializing scheduled jobs...');
 
-  // Auto-Punch Out Job runs every 15 minutes to catch expired shifts or max-hours limit
-  cron.schedule('*/15 * * * *', async () => {
+  // Auto-Punch Out Job runs every 5 minutes to record auto checkout at the configured time
+  cron.schedule('*/5 * * * *', async () => {
     try {
       const result = await processAutoPunchOut();
       if (result.processed > 0) {
@@ -19,7 +19,7 @@ const initCronJobs = () => {
     }
   });
 
-  console.log('[Cron] Initialized Auto-Punch Out cron job (every 15 minutes).');
+  console.log('[Cron] Initialized Auto-Punch Out cron job (every 5 minutes).');
 };
 
 module.exports = { initCronJobs };

@@ -132,7 +132,7 @@ const DEFAULT_MODULES = [
 
 const MODULE_OWNERSHIP_MAP = {
   companies: { createdByField: 'createdBy', assignedToField: 'assignedTo' },
-  tickets: { createdByField: 'createdBy' },
+  tickets: { createdByField: 'createdBy', assignedToField: 'assignedTo' },
   users: { createdByField: 'createdBy' },
   roles: { createdByField: 'createdBy' },
   modules: { createdByField: 'createdBy' },
@@ -141,6 +141,7 @@ const MODULE_OWNERSHIP_MAP = {
   leaves: { createdByField: 'userId' },
   calendar: { createdByField: 'userId' },
   salary: { createdByField: 'userId' },
+  dashboard: { employeeIdField: 'userId', createdByField: 'createdBy' },
   default: { createdByField: 'createdBy', assignedToField: 'assignedTo' },
 };
 

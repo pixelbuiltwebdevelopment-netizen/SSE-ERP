@@ -1,135 +1,180 @@
 const Attendance = require('../models/Attendance');
-const { getActivePolicy, calculateAttendanceSummary, setTimeToDate } = require('./attendanceCalculationService');
+const { getActivePolicy, calculateAttendanceSummary } = require('./attendanceCalculationService');
 const { logActivity } = require('./auditService');
-const { sendNotification } = require('./notificationService');
 const { getIO } = require('./socketService');
 
 /**
- * Execute automatic punch out for open sessions that have exceeded shift/max limits
+ * Get timezone offset in ms between UTC and specified timeZone
+ */
+function getTimezoneOffsetMs(timeZone, date = new Date()) {
+  const utcDate = new Date(date.toLocaleString('en-US', { timeZone: 'UTC' }));
+  const tzDate = new Date(date.toLocaleString('en-US', { timeZone }));
+  return tzDate.getTime() - utcDate.getTime();
+}
+
+/**
+ * Create a UTC Date object representing dateStr (YYYY-MM-DD) and timeStr (HH:mm) in target timezone
+ */
+function createDateInTimezone(dateStr, timeStr, tz = 'Asia/Kolkata') {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const [h, min] = timeStr.split(':').map(Number);
+  const targetUtc = Date.UTC(y, m - 1, d, h, min, 0);
+  const offsetMs = getTimezoneOffsetMs(tz, new Date(targetUtc));
+  return new Date(targetUtc - offsetMs);
+}
+
+/**
+ * Get current date string and time string in target timezone
+ */
+function getNowInTimezone(tz = 'Asia/Kolkata') {
+  const now = new Date();
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
+  const parts = formatter.formatToParts(now);
+  const map = {};
+  parts.forEach((p) => {
+    map[p.type] = p.value;
+  });
+  return {
+    todayDateStr: `${map.year}-${map.month}-${map.day}`,
+    currentTimeStr: `${map.hour}:${map.minute}`,
+  };
+}
+
+/**
+ * Execute automatic punch out for open sessions that have missed checkout
+ *
+ * Business Logic:
+ * - Automatic punch-out ONLY runs for a day after 12:00 AM (midnight) has passed,
+ *   i.e. once the date has ended (record.date < todayDateStr in company timezone).
+ * - During the working day (up to 12:00 AM midnight), employees are free to work and punch out manually.
+ * - Once 12:00 AM midnight passes into the next day, any unpunched session from that day is
+ *   automatically calculated using the configured checkout time (e.g. 18:00 or 20:00).
+ * - Calculate total working hours using actual punch-in and configured checkout timestamp.
+ * - Mark checkout source as AUTO / SYSTEM_GENERATED.
+ * - Preserve original punch-in timestamp.
+ * - Do not overwrite actual checkout timestamps (only records with missing checkout are processed).
+ * - Idempotent so repeated runs cannot create duplicate checkout records.
+ * - Skips employees who already punched out.
+ * - If automatic punch-out is disabled, skip processing.
+ * - Timezone-aware using company timezone.
  */
 const processAutoPunchOut = async () => {
   try {
     const policy = await getActivePolicy();
-    if (policy.autoPunchOutMode === 'DISABLED') {
-      return { processed: 0, message: 'Auto punch-out is disabled in policy.' };
+    const isEnabled = policy.autoPunchOutEnabled !== false && policy.autoPunchOutMode !== 'DISABLED';
+    if (!isEnabled) {
+      return { processed: 0, message: 'Automatic punch-out is disabled in company policy.' };
     }
 
-    const todayStr = new Date().toISOString().split('T')[0];
-    const now = new Date();
+    const tz = policy.timezone || 'Asia/Kolkata';
+    const autoPunchOutTimeStr = policy.autoPunchOutTime || policy.standardEndTime || '18:00';
+    const { todayDateStr, currentTimeStr } = getNowInTimezone(tz);
 
-    // Find all attendance records that have punchIn but no punchOut.time
+    // Only process sessions where the day has completed (past 12:00 AM midnight, record.date < todayDateStr)
     const openRecords = await Attendance.find({
-      'punchIn.time': { $exists: true },
-      'punchOut.time': { $exists: false },
-    })
-      .populate('userId', 'name email departmentId branchId teamId')
-      .populate('shiftId');
+      date: { $lt: todayDateStr },
+      'punchIn.time': { $exists: true, $ne: null },
+      $or: [
+        { 'punchOut.time': { $exists: false } },
+        { 'punchOut.time': null },
+      ],
+      isAutoPunchOut: { $ne: true },
+    }).populate('userId', 'name email departmentId branchId teamId');
 
     let processedCount = 0;
 
     for (const record of openRecords) {
-      if (!record.punchIn || !record.punchIn.time) continue;
+      if (!record.punchIn || !record.punchIn.time || !record.date) continue;
 
+      // Double check date boundary: must be strictly past 12:00 AM midnight of record.date
+      if (record.date >= todayDateStr) {
+        continue;
+      }
+
+      // Compute checkout timestamp on record's date at the configured auto checkout time
+      let effectivePunchOutTime = createDateInTimezone(record.date, autoPunchOutTimeStr, tz);
       const punchInDate = new Date(record.punchIn.time);
-      const isPastDay = record.date !== todayStr;
 
-      // Determine shift schedule
-      const shiftStartTimeStr = record.shiftId?.startTime || policy.standardStartTime || '09:00';
-      const shiftEndTimeStr = record.shiftId?.endTime || policy.standardEndTime || '18:00';
-
-      const scheduledEnd = setTimeToDate(punchInDate, shiftEndTimeStr);
-      const scheduledStart = setTimeToDate(punchInDate, shiftStartTimeStr);
-
-      // Check if cutoff has elapsed
-      let shouldAutoPunch = false;
-      let effectivePunchOutTime = new Date();
-      let methodUsed = 'Auto-ShiftEnd';
-      let reason = '';
-
-      if (policy.autoPunchOutMode === 'SHIFT_END') {
-        // If current time is after scheduled shift end (plus 30 min buffer) OR record is from a previous day
-        if (isPastDay || now > new Date(scheduledEnd.getTime() + 30 * 60 * 1000)) {
-          shouldAutoPunch = true;
-          effectivePunchOutTime = scheduledEnd;
-          methodUsed = 'Auto-ShiftEnd';
-          reason = `Auto punched out at shift end (${shiftEndTimeStr}) due to missing punch-out.`;
-        }
-      } else if (policy.autoPunchOutMode === 'MAX_HOURS') {
-        const maxHours = policy.autoPunchOutMaxHours || 9.0;
-        const maxDurationMs = maxHours * 60 * 60 * 1000;
-        const elapsedSincePunchIn = now - punchInDate;
-
-        if (isPastDay || elapsedSincePunchIn >= maxDurationMs) {
-          shouldAutoPunch = true;
-          effectivePunchOutTime = new Date(punchInDate.getTime() + maxDurationMs);
-          methodUsed = 'Auto-MaxHours';
-          reason = `Auto punched out after max duration limit (${maxHours}h).`;
-        }
+      // Guard: If employee punched in at or after configured autoPunchOutTime (e.g. night shift or late punch-in)
+      if (effectivePunchOutTime <= punchInDate) {
+        const standardDurationMs = (policy.requiredWorkHours || 8.0) * 60 * 60 * 1000;
+        const candidateEnd = new Date(punchInDate.getTime() + standardDurationMs);
+        const endOfDay = createDateInTimezone(record.date, '23:59', tz);
+        effectivePunchOutTime = candidateEnd <= endOfDay ? candidateEnd : endOfDay;
       }
 
-      if (shouldAutoPunch) {
-        // Run centralized attendance calculations
-        const metrics = calculateAttendanceSummary({
-          punchInTime: punchInDate,
-          punchOutTime: effectivePunchOutTime,
-          scheduledStartTime: scheduledStart,
-          scheduledEndTime: scheduledEnd,
-          policy,
-          shift: record.shiftId || {},
-        });
+      // Scheduled shift boundaries
+      const scheduledStart = createDateInTimezone(record.date, policy.standardStartTime || '09:00', tz);
+      const scheduledEnd = createDateInTimezone(record.date, policy.standardEndTime || '18:00', tz);
 
-        // Set punchOut details
-        record.punchOut = {
-          time: effectivePunchOutTime,
-          isAutoPunched: true,
-          method: methodUsed,
-          ipAddress: '127.0.0.1 (SYSTEM)',
-        };
+      // Calculate attendance metrics
+      const metrics = calculateAttendanceSummary({
+        punchInTime: punchInDate,
+        punchOutTime: effectivePunchOutTime,
+        scheduledStartTime: scheduledStart,
+        scheduledEndTime: scheduledEnd,
+        policy,
+        shift: {
+          startTime: policy.standardStartTime || '09:00',
+          endTime: policy.standardEndTime || '18:00',
+          gracePeriodMinutes: policy.gracePeriodMinutes ?? 15,
+          earlyDepartureThresholdMinutes: policy.earlyDepartureThresholdMinutes ?? 30,
+          requiredHours: policy.requiredWorkHours ?? 8.0,
+          halfDayThresholdHours: policy.halfDayThresholdHours ?? 4.0,
+          fullDayThresholdHours: policy.fullDayThresholdHours ?? 8.0,
+          unpaidBreakMinutes: 0,
+        },
+      });
 
-        record.actualPunchOutAt = null; // No physical punch-out recorded
-        record.effectivePunchOutAt = effectivePunchOutTime;
-        record.actualWorkedMinutes = 0; // Actual physical observation is 0 past punch-in
-        record.effectiveWorkedMinutes = metrics.effectiveWorkedMinutes;
-        record.workingHours = metrics.workingHours;
-        record.unpaidBreakMinutes = metrics.unpaidBreakMinutes;
-        record.lateMinutes = metrics.lateMinutes;
-        record.earlyDepartureMinutes = metrics.earlyDepartureMinutes;
-        record.overtimeMinutes = 0; // Do not auto-grant overtime for missing punch-out
-        record.status = metrics.status;
-        record.flags = [...new Set([...metrics.flags, 'Auto-Punched', 'Missing-Punch-Out'])];
-        record.isAutoPunchOut = true;
-        record.autoPunchOutReason = reason;
+      // Populate punchOut details
+      record.punchOut = {
+        time: effectivePunchOutTime,
+        isAutoPunched: true,
+        method: 'AUTO',
+        ipAddress: 'SYSTEM_GENERATED',
+      };
 
-        if (policy.autoPunchOutRequireReview) {
-          record.needsReview = true;
-          record.reviewStatus = 'Pending-Review';
-        }
+      record.actualPunchOutAt = null; // No physical punch recorded
+      record.effectivePunchOutAt = effectivePunchOutTime;
+      record.actualWorkedMinutes = 0;
+      record.effectiveWorkedMinutes = metrics.effectiveWorkedMinutes;
+      record.workingHours = metrics.workingHours;
+      record.unpaidBreakMinutes = 0;
+      record.lateMinutes = metrics.lateMinutes;
+      record.earlyDepartureMinutes = metrics.earlyDepartureMinutes;
+      record.overtimeMinutes = 0; // Auto checkouts do not grant unverified overtime beyond configured checkout
+      record.status = metrics.status;
+      record.flags = [...new Set([...metrics.flags, 'Auto-Punched', 'Missing-Punch-Out'])];
+      record.isAutoPunchOut = true;
+      record.autoPunchOutReason = `Auto checked out at configured time (${autoPunchOutTimeStr}) after midnight due to missing punch-out.`;
 
-        await record.save();
-        processedCount++;
-
-        // System audit log
-        await logActivity({
-          userId: record.userId?._id,
-          userName: 'SYSTEM',
-          userEmail: 'system@erp.local',
-          action: 'ATTENDANCE_AUTO_PUNCH_OUT',
-          module: 'attendance',
-          resourceId: record._id.toString(),
-          description: `${reason} for user ${record.userId?.name || 'Employee'}. Effective duration: ${metrics.workingHours}h.`,
-        });
-
-        // Notify employee
-        if (policy.autoPunchOutNotifyEmployee && record.userId?._id) {
-          await sendNotification({
-            userId: record.userId._id,
-            title: 'Automatic Punch-Out Applied',
-            message: `Your attendance for ${record.date} was automatically closed at ${effectivePunchOutTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}. Please submit a correction if your timings differed.`,
-            type: 'AUTO_PUNCH_OUT',
-            referenceId: record._id,
-          });
-        }
+      if (policy.autoPunchOutRequireReview) {
+        record.needsReview = true;
+        record.reviewStatus = 'Pending-Review';
       }
+
+      await record.save();
+      processedCount++;
+
+      // Audit log
+      await logActivity({
+        userId: record.userId?._id,
+        userName: 'SYSTEM',
+        userEmail: 'system@erp.local',
+        action: 'ATTENDANCE_AUTO_PUNCH_OUT',
+        module: 'attendance',
+        resourceId: record._id.toString(),
+        description: `Auto recorded checkout at ${autoPunchOutTimeStr} after 12:00 AM for ${record.userId?.name || 'Employee'}. Working hours: ${metrics.workingHours}h.`,
+      });
     }
 
     const io = getIO();
@@ -137,7 +182,10 @@ const processAutoPunchOut = async () => {
       io.emit('attendance_batch_updated', { processed: processedCount });
     }
 
-    return { processed: processedCount, message: `Processed ${processedCount} open attendance sessions.` };
+    return {
+      processed: processedCount,
+      message: `Successfully processed ${processedCount} missing punch-out session(s) at configured time (${autoPunchOutTimeStr}).`,
+    };
   } catch (error) {
     console.error('[AutomaticPunchOutService] Error running auto punch-out:', error);
     throw error;
@@ -146,4 +194,6 @@ const processAutoPunchOut = async () => {
 
 module.exports = {
   processAutoPunchOut,
+  createDateInTimezone,
+  getNowInTimezone,
 };

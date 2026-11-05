@@ -1,227 +1,346 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { Link } from 'react-router-dom';
+import {
+  Receipt,
+  Wallet,
+  TrendingDown,
+  TrendingUp,
+  CheckCircle2,
+  XCircle,
+  Clock,
+  Plus,
+  Search,
+  Eye,
+  Check,
+  X,
+  CreditCard,
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  ExternalLink,
+  FileText,
+  UserCheck,
+  RotateCcw,
+  RefreshCw,
+  Building,
+  BarChart3,
+} from 'lucide-react';
 import { expenseApi } from '../../api/expenseApi';
 import { usePermission } from '../../hooks/usePermission';
-import LoadingSpinner from '../../components/common/LoadingSpinner';
+import PageHeader from '../../components/common/PageHeader';
+import StatCard from '../../components/common/StatCard';
+import StatusBadge from '../../components/common/StatusBadge';
+import EmptyState from '../../components/common/EmptyState';
+import { TableSkeleton } from '../../components/common/Skeleton';
 import Pagination from '../../components/common/Pagination';
 import Modal from '../../components/common/Modal';
-import { Link } from 'react-router-dom';
+import PermissionGate from '../../components/permissions/PermissionGate';
 
-// Official ERP Design System Palette
-const ERP_COLORS = {
-  primary: '#087FF5',       // Electric Blue
-  sidebar: '#071A33',       // Deep Navy
-  secondaryBlue: '#0057B8', // Royal Blue
-  silver: '#C5CED8',        // Metallic Silver
-  mainBg: '#F4F7FB',        // Ice White
-  cardBg: '#FFFFFF',        // Pure White
-  textPrimary: '#1E293B',   // Slate
-  textSecondary: '#64748B', // Gray
-  border: '#E2E8F0',        // Light Gray
-  success: '#16A34A',       // Green
-  warning: '#D97706',       // Amber
-  error: '#DC2626',         // Red
-};
-
-// Date range calculation for ERP periods
-const calculatePeriodRange = (period) => {
-  const now = new Date();
-  switch (period) {
-    case 'last_month': {
-      const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      const end = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
-      return { start, end };
-    }
-    case 'this_month': {
-      const start = new Date(now.getFullYear(), now.getMonth(), 1);
-      const end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
-      return { start, end };
-    }
-    case 'last_30_days': {
-      const start = new Date();
-      start.setDate(now.getDate() - 30);
-      return { start, end: now };
-    }
-    case 'this_year': {
-      const start = new Date(now.getFullYear(), 0, 1);
-      const end = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
-      return { start, end };
-    }
-    default:
-      return null;
-  }
-};
+// Enhanced Child Modals & Components
+import EmployeeStatementModal from './components/EmployeeStatementModal';
+import ClaimDetailsModal from './components/ClaimDetailsModal';
+import ClaimSettlementModal from './components/ClaimSettlementModal';
+import CompanyDateFilterBar from './components/CompanyDateFilterBar';
+import CompanyPeriodicReportView from './components/CompanyPeriodicReportView';
 
 const ExpenseMainPage = () => {
   const { can } = usePermission();
-  const [balance, setBalance] = useState({ totalAdvanceReceived: 0, totalExpensesDeducted: 0, currentBalance: 0 });
-  const [claims, setClaims] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [pagination, setPagination] = useState({ page: 1, totalPages: 1, total: 0 });
-  
-  // Permissions
   const canApprove = can('expenses', 'approve');
   const canManageAdvance = can('expenses', 'manage_advance');
 
-  // Tabs & Filters
-  const [activeTab, setActiveTab] = useState('my');
-  const [page, setPage] = useState(1);
-  const [statusFilter, setStatusFilter] = useState('');
-  const [periodFilter, setPeriodFilter] = useState('');
-  
-  // Hybrid Employee & Text Search States
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedEmployee, setSelectedEmployee] = useState(null);
-  const [isEmployeeDropdownOpen, setIsEmployeeDropdownOpen] = useState(false);
-  const searchBoxRef = useRef(null);
-
-  // Modals
-  const [viewModal, setViewModal] = useState({ show: false, claim: null });
-  const [previewReceipt, setPreviewReceipt] = useState(null);
-  const [rejectModal, setRejectModal] = useState({ show: false, claimId: '', reason: '' });
-  const [processingId, setProcessingId] = useState(null);
-
-  // Close employee combobox on click outside
-  useEffect(() => {
-    const handleClickOutside = (e) => {
-      if (searchBoxRef.current && !searchBoxRef.current.contains(e.target)) {
-        setIsEmployeeDropdownOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+  // Retrieve current user
+  const currentUser = useMemo(() => {
+    try {
+      const stored = localStorage.getItem('user');
+      return stored ? JSON.parse(stored) : null;
+    } catch (e) {
+      return null;
+    }
   }, []);
 
-  // Reset filters when switching tabs
+  // Tabs: 'my' or 'team'
+  const [activeTab, setActiveTab] = useState('my');
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  // My Balance & Financial KPIs (Phase 6)
+  const [balance, setBalance] = useState({
+    totalAdvanceReceived: 0,
+    totalExpensesDeducted: 0,
+    totalRefundsReceived: 0,
+    totalReimbursementsPaid: 0,
+    currentBalance: 0,
+    pendingClaimsCount: 0,
+    pendingClaimsAmount: 0,
+    approvedUnsettledAmount: 0,
+    reimbursementsPendingAmount: 0,
+  });
+
+  // Team Financial Overview (Phase 2B)
+  const [teamOverview, setTeamOverview] = useState({
+    summaryCards: {
+      employeesWithPendingClaims: 0,
+      totalPendingClaims: 0,
+      totalPendingClaimAmount: 0,
+      totalOutstandingEmployeeAdvances: 0,
+    },
+    employeeSummaries: [],
+  });
+  const [employeeSearch, setEmployeeSearch] = useState('');
+  const [empPage, setEmpPage] = useState(1);
+  const empPerPage = 8;
+
+  // Team Tab Global Date Filter & View Mode
+  const [teamDateFilter, setTeamDateFilter] = useState({
+    startDate: '',
+    endDate: '',
+    label: 'All Records',
+    preset: 'all',
+  });
+  const [teamView, setTeamView] = useState('overview'); // 'overview' | 'reports'
+
+  // Claims Table State
+  const [claims, setClaims] = useState([]);
+  const [pagination, setPagination] = useState({ page: 1, totalPages: 1, total: 0 });
+  const [page, setPage] = useState(1);
+  const [statusFilter, setStatusFilter] = useState('');
+  const [settlementFilter, setSettlementFilter] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+
+  // Modals state
+  const [receiptModal, setReceiptModal] = useState({
+    show: false,
+    receipts: [],
+    currentIndex: 0,
+    claimId: '',
+  });
+  const [rejectModal, setRejectModal] = useState({ show: false, claimId: '', reason: '' });
+  const [statementModal, setStatementModal] = useState({ show: false, userId: '' });
+  const [detailsModal, setDetailsModal] = useState({ show: false, claim: null });
+  const [settleModal, setSettleModal] = useState({ show: false, claim: null });
+  const [processingId, setProcessingId] = useState(null);
+
+  // Extract all receipts for a claim across items, arrays, single URLs and top-level attachments
+  const getClaimReceipts = (claim) => {
+    if (!claim) return [];
+    const list = [];
+    const seenUrls = new Set();
+
+    const pushReceipt = (url, category, description, amount, date, label) => {
+      if (!url || typeof url !== 'string' || seenUrls.has(url.trim())) return;
+      const cleanUrl = url.trim();
+      seenUrls.add(cleanUrl);
+      list.push({
+        url: cleanUrl,
+        itemCategory: category || 'General',
+        itemDescription: description || '',
+        itemAmount: amount || 0,
+        itemDate: date || claim.createdAt,
+        label: label || `Bill #${list.length + 1}`,
+        employeeId: claim.userId?.employeeId || claim.userId?.empId || 'EMP',
+      });
+    };
+
+    // 1. Check itemized entries
+    if (Array.isArray(claim.items)) {
+      claim.items.forEach((item, itemIdx) => {
+        const itemUrls = [];
+        if (Array.isArray(item.receiptUrls)) {
+          itemUrls.push(...item.receiptUrls.filter(Boolean));
+        }
+        if (item.receiptUrl && !itemUrls.includes(item.receiptUrl)) {
+          itemUrls.push(item.receiptUrl);
+        }
+
+        itemUrls.forEach((u, uIdx) => {
+          pushReceipt(
+            u,
+            item.category || `Item #${itemIdx + 1}`,
+            item.description,
+            item.amount,
+            item.date,
+            itemUrls.length > 1 ? `Bill #${uIdx + 1}` : (item.category || `Bill #${itemIdx + 1}`)
+          );
+        });
+      });
+    }
+
+    // 2. Check top-level receiptUrls array
+    if (Array.isArray(claim.receiptUrls)) {
+      claim.receiptUrls.forEach((u, uIdx) => {
+        pushReceipt(u, 'Receipt Attachment', '', 0, claim.createdAt, `Receipt #${uIdx + 1}`);
+      });
+    }
+
+    // 3. Check top-level attachments array
+    if (Array.isArray(claim.attachments)) {
+      claim.attachments.forEach((att, aIdx) => {
+        const u = typeof att === 'string' ? att : att?.url;
+        pushReceipt(u, 'Attachment', '', 0, claim.createdAt, `Attachment #${aIdx + 1}`);
+      });
+    }
+
+    // 4. Fallback top-level receiptUrl
+    if (claim.receiptUrl) {
+      pushReceipt(claim.receiptUrl, 'Receipt', '', 0, claim.createdAt, 'Receipt #1');
+    }
+
+    return list;
+  };
+
+  // Keyboard navigation for multi-receipt viewer
+  useEffect(() => {
+    if (!receiptModal.show || receiptModal.receipts.length <= 1) return;
+    const handleKeyDown = (e) => {
+      if (e.key === 'ArrowLeft') {
+        setReceiptModal((prev) => ({
+          ...prev,
+          currentIndex: (prev.currentIndex - 1 + prev.receipts.length) % prev.receipts.length,
+        }));
+      } else if (e.key === 'ArrowRight') {
+        setReceiptModal((prev) => ({
+          ...prev,
+          currentIndex: (prev.currentIndex + 1) % prev.receipts.length,
+        }));
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [receiptModal.show, receiptModal.receipts.length]);
+
+  const handleDownloadReceipt = async (receipt, index) => {
+    if (!receipt?.url) return;
+    try {
+      const response = await fetch(receipt.url);
+      const blob = await response.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      const isPdf = /\.pdf($|\?)/i.test(receipt.url) || blob.type.includes('pdf');
+      const ext = isPdf ? 'pdf' : (receipt.url.split('.').pop().split('?')[0] || 'jpg');
+      const dateStr = receipt.itemDate
+        ? new Date(receipt.itemDate).toISOString().split('T')[0]
+        : new Date().toISOString().split('T')[0];
+      const customName = `${receipt.employeeId || 'EMP'}_${dateStr}_Receipt_${index + 1}.${ext}`;
+
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = customName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(blobUrl);
+    } catch (err) {
+      console.error('Download failed, opening directly:', err);
+      window.open(receipt.url, '_blank');
+    }
+  };
+
   useEffect(() => {
     setPage(1);
-    setStatusFilter(activeTab === 'team' ? 'Pending' : '');
-    setPeriodFilter('');
     setSearchQuery('');
-    setSelectedEmployee(null);
+    setStatusFilter(activeTab === 'team' ? 'Pending' : '');
+    setSettlementFilter('');
   }, [activeTab]);
 
-  const fetchData = async () => {
+  const fetchData = async (overrideTeamFilter = teamDateFilter) => {
     setLoading(true);
     try {
+      // 1. My Balance / Employee KPIs
       const balRes = await expenseApi.getMyBalance();
       if (balRes.data?.success) setBalance(balRes.data.data);
 
-      const params = { page, limit: 10 };
-      if (statusFilter) params.status = statusFilter;
+      // 2. Team Financial Overview (when on Team tab or if authorized)
+      if (canApprove || activeTab === 'team') {
+        try {
+          const overviewParams = {};
+          if (overrideTeamFilter?.startDate) overviewParams.startDate = overrideTeamFilter.startDate;
+          if (overrideTeamFilter?.endDate) overviewParams.endDate = overrideTeamFilter.endDate;
 
-      if (periodFilter) {
-        const range = calculatePeriodRange(periodFilter);
-        if (range) {
-          params.startDate = range.start.toISOString();
-          params.endDate = range.end.toISOString();
-          params.period = periodFilter;
+          const overviewRes = await expenseApi.getEmployeeFinancialOverview(overviewParams);
+          if (overviewRes.data?.success) {
+            setTeamOverview(overviewRes.data.data);
+          }
+        } catch (oErr) {
+          console.warn('Could not load team employee summary:', oErr);
         }
       }
 
-      const claimRes = activeTab === 'my' 
-        ? await expenseApi.getMyClaims(params)
-        : await expenseApi.getClaims(params);
+      // 3. Claims List
+      const params = { page, limit: 12 };
+      if (statusFilter) params.status = statusFilter;
+      if (settlementFilter) params.settlementStatus = settlementFilter;
+      if (dateFrom) params.startDate = dateFrom;
+      if (dateTo) params.endDate = dateTo;
+
+      const claimRes =
+        activeTab === 'my'
+          ? await expenseApi.getMyClaims(params)
+          : await expenseApi.getClaims(params);
 
       if (claimRes.data?.success) {
         setClaims(claimRes.data.data.records || []);
         setPagination({
           page: claimRes.data.data.pagination.page || 1,
           totalPages: claimRes.data.data.pagination.pages || 1,
-          total: claimRes.data.data.pagination.total || 0
+          total: claimRes.data.data.pagination.total || 0,
         });
       }
     } catch (err) {
       console.error('Failed to load expense dashboard:', err);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
   useEffect(() => {
     fetchData();
-  }, [page, activeTab, statusFilter, periodFilter]);
+  }, [page, activeTab, statusFilter, settlementFilter, dateFrom, dateTo]);
 
-  // Extract unique employees from records for the searchable dropdown
-  const uniqueEmployees = useMemo(() => {
-    const empMap = new Map();
-    claims.forEach((claim) => {
-      if (claim.userId && claim.userId._id) {
-        if (!empMap.has(claim.userId._id)) {
-          empMap.set(claim.userId._id, {
-            id: claim.userId._id,
-            name: claim.userId.name || 'Unnamed Employee',
-            email: claim.userId.email || '',
-            employeeId: claim.userId.employeeId || claim.userId._id.slice(-6).toUpperCase(),
-            count: 1
-          });
-        } else {
-          empMap.get(claim.userId._id).count += 1;
-        }
-      }
-    });
-    return Array.from(empMap.values());
-  }, [claims]);
+  const handleRefresh = () => {
+    setRefreshing(true);
+    fetchData();
+  };
 
-  // Filter employees inside the dropdown matching typed search
-  const filteredDropdownEmployees = useMemo(() => {
-    if (!searchQuery) return uniqueEmployees;
-    const query = searchQuery.toLowerCase();
-    return uniqueEmployees.filter((emp) => 
-      emp.name.toLowerCase().includes(query) || 
-      emp.email.toLowerCase().includes(query) ||
-      emp.employeeId.toLowerCase().includes(query)
-    );
-  }, [uniqueEmployees, searchQuery]);
-
-  // Hybrid Filtering
+  // Filtered claims for live search
   const filteredClaims = useMemo(() => {
     return claims.filter((claim) => {
-      if (selectedEmployee) {
-        if (claim.userId?._id !== selectedEmployee.id) return false;
-      }
-
-      if (searchQuery && !selectedEmployee) {
-        const query = searchQuery.toLowerCase();
-        const matchesId = claim._id.toLowerCase().includes(query);
-        const matchesEmp = claim.userId?.name?.toLowerCase().includes(query);
-        const matchesDesc = claim.items?.some((it) => it.description?.toLowerCase().includes(query));
-        if (!matchesId && !matchesEmp && !matchesDesc) return false;
-      }
-
-      if (periodFilter) {
-        const range = calculatePeriodRange(periodFilter);
-        if (range) {
-          const claimDate = new Date(claim.createdAt || claim.date);
-          if (claimDate < range.start || claimDate > range.end) return false;
-        }
-      }
-
-      return true;
+      if (!searchQuery) return true;
+      const q = searchQuery.toLowerCase();
+      const matchesId = claim._id?.toLowerCase().includes(q);
+      const matchesEmp = claim.userId?.name?.toLowerCase().includes(q);
+      const matchesEmpId = claim.userId?.employeeId?.toLowerCase().includes(q);
+      const matchesDesc = claim.items?.some((it) => it.description?.toLowerCase().includes(q));
+      return matchesId || matchesEmp || matchesEmpId || matchesDesc;
     });
-  }, [claims, searchQuery, selectedEmployee, periodFilter]);
+  }, [claims, searchQuery]);
 
-  const filteredTotalAmount = useMemo(() => {
-    return filteredClaims.reduce((acc, c) => acc + (c.totalClaimAmount || 0), 0);
-  }, [filteredClaims]);
+  // Filtered employee summaries for Team Overview
+  const filteredEmployeeSummaries = useMemo(() => {
+    const list = teamOverview.employeeSummaries || [];
+    if (!employeeSearch.trim()) return list;
+    const q = employeeSearch.toLowerCase();
+    return list.filter(
+      (emp) =>
+        emp.name?.toLowerCase().includes(q) ||
+        emp.employeeId?.toLowerCase().includes(q) ||
+        emp.email?.toLowerCase().includes(q) ||
+        emp.department?.toLowerCase().includes(q)
+    );
+  }, [teamOverview.employeeSummaries, employeeSearch]);
 
-  const handleSelectEmployee = (emp) => {
-    setSelectedEmployee(emp);
-    setSearchQuery(emp.name);
-    setIsEmployeeDropdownOpen(false);
-    setPage(1);
-  };
+  const paginatedEmployeeSummaries = useMemo(() => {
+    const start = (empPage - 1) * empPerPage;
+    return filteredEmployeeSummaries.slice(start, start + empPerPage);
+  }, [filteredEmployeeSummaries, empPage]);
 
-  const handleClearEmployeeSelection = () => {
-    setSelectedEmployee(null);
-    setSearchQuery('');
-    setPage(1);
-  };
-
+  // Handle Approve (pure approval without auto-deducting advance)
   const handleApprove = async (id) => {
-    if (!window.confirm('Approve this claim? Amount will be deducted from employee balance.')) return;
+    if (!window.confirm('Approve this expense claim? Note: Settlement will be processed separately.')) return;
     setProcessingId(id);
     try {
-      await expenseApi.approveClaim(id);
+      await expenseApi.approveClaim(id, { remarks: 'Approved by reviewer' });
       fetchData();
     } catch (err) {
       alert(err.response?.data?.message || 'Approval failed');
@@ -230,8 +349,13 @@ const ExpenseMainPage = () => {
     }
   };
 
-  const handleReject = async (e) => {
+  // Handle Reject
+  const handleRejectSubmit = async (e) => {
     e.preventDefault();
+    if (!rejectModal.reason.trim()) {
+      alert('Please state a reason for rejecting the claim.');
+      return;
+    }
     setProcessingId(rejectModal.claimId);
     try {
       await expenseApi.rejectClaim(rejectModal.claimId, rejectModal.reason);
@@ -244,1077 +368,947 @@ const ExpenseMainPage = () => {
     }
   };
 
-  const handleDownloadModalReceipt = async (fileUrl, employeeId, itemDate, rIdx) => {
-    try {
-      const response = await fetch(fileUrl);
-      const blob = await response.blob();
-      const blobUrl = window.URL.createObjectURL(blob);
-
-      const isPdf = /\.pdf($|\?)/i.test(fileUrl) || blob.type.includes('pdf');
-      const ext = isPdf ? 'pdf' : (fileUrl.split('.').pop().split('?')[0] || 'jpg');
-
-      const safeDate = itemDate ? new Date(itemDate).toISOString().split('T')[0] : 'date';
-      const safeEmpId = employeeId || 'EMP';
-      const customFileName = `${safeEmpId}_${safeDate}_Receipt_${rIdx + 1}.${ext}`;
-
-      const link = document.createElement('a');
-      link.href = blobUrl;
-      link.download = customFileName;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(blobUrl);
-    } catch (err) {
-      console.error('Download error:', err);
-      window.open(fileUrl, '_blank');
-    }
-  };
-
-  const getStatusBadge = (status) => {
-    switch (status) {
-      case 'Approved':
-        return (
-          <span 
-            className="badge px-3 py-1.5 fw-semibold text-nowrap"
-            style={{ 
-              backgroundColor: '#DCFCE7', 
-              color: ERP_COLORS.success, 
-              border: '1px solid #BBF7D0', 
-              borderRadius: '6px',
-              fontSize: '0.74rem'
-            }}
-          >
-            ● Approved
-          </span>
-        );
-      case 'Rejected':
-        return (
-          <span 
-            className="badge px-3 py-1.5 fw-semibold text-nowrap"
-            style={{ 
-              backgroundColor: '#FEE2E2', 
-              color: ERP_COLORS.error, 
-              border: '1px solid #FECACA', 
-              borderRadius: '6px',
-              fontSize: '0.74rem'
-            }}
-          >
-            ✕ Rejected
-          </span>
-        );
-      default:
-        return (
-          <span 
-            className="badge px-3 py-1.5 fw-semibold text-nowrap"
-            style={{ 
-              backgroundColor: '#FEF3C7', 
-              color: ERP_COLORS.warning, 
-              border: '1px solid #FDE68A', 
-              borderRadius: '6px',
-              fontSize: '0.74rem'
-            }}
-          >
-            ⏳ Pending
-          </span>
-        );
-    }
-  };
-
   return (
-    <>
-      <style>{`
-        .erp-page-fade {
-          animation: erpFadeIn 0.3s ease-out;
-        }
-        @keyframes erpFadeIn {
-          from { opacity: 0; transform: translateY(6px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-
-        .erp-card-elevated {
-          transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.22s ease;
-        }
-        .erp-card-elevated:hover {
-          transform: translateY(-3px);
-          box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08) !important;
-        }
-
-        .erp-btn-hover {
-          transition: all 0.18s ease-in-out;
-        }
-        .erp-btn-hover:hover:not(:disabled) {
-          transform: translateY(-1px);
-          box-shadow: 0 4px 12px rgba(8, 127, 245, 0.25);
-        }
-
-        .erp-table-row {
-          transition: background-color 0.16s ease;
-        }
-        .erp-table-row:hover {
-          background-color: #F8FAFC !important;
-        }
-
-        .erp-input-focus:focus {
-          border-color: #087FF5 !important;
-          box-shadow: 0 0 0 3px rgba(8, 127, 245, 0.12) !important;
-        }
-
-        .combobox-menu {
-          position: absolute;
-          top: calc(100% + 6px);
-          left: 0;
-          right: 0;
-          background: #FFFFFF;
-          border-radius: 12px;
-          border: 1px solid #CBD5E1;
-          box-shadow: 0 12px 28px rgba(15, 23, 42, 0.14);
-          z-index: 1050;
-          max-height: 280px;
-          overflow-y: auto;
-          animation: menuSlide 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-        }
-        @keyframes menuSlide {
-          from { opacity: 0; transform: translateY(-6px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-
-        .combobox-item {
-          padding: 9px 12px;
-          cursor: pointer;
-          transition: background-color 0.15s ease;
-        }
-        .combobox-item:hover {
-          background-color: #F1F5F9;
-        }
-        .combobox-item.active {
-          background-color: #EBF4FE;
-        }
-      `}</style>
-
-      {/* Main Canvas with Fluid Responsive Padding */}
-      <div 
-        className="w-100 px-3 px-sm-4 px-xl-5 py-4 erp-page-fade" 
-        style={{ backgroundColor: ERP_COLORS.mainBg, minHeight: '100vh', color: ERP_COLORS.textPrimary }}
-      >
-        <div className="mx-auto" style={{ maxWidth: '1360px' }}>
-          
-          {/* 1. Header Banner */}
-          <div 
-            className="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-3 mb-4 p-3.5 p-sm-4 rounded-4 shadow-sm erp-card-elevated"
-            style={{ backgroundColor: ERP_COLORS.cardBg, border: `1px solid ${ERP_COLORS.border}` }}
-          >
-            <div>
-              <div className="d-flex align-items-center gap-2 mb-2">
-                <span 
-                  className="badge rounded-pill px-2.5 py-1 fw-bold"
-                  style={{ backgroundColor: '#EBF4FE', color: ERP_COLORS.primary, fontSize: '0.68rem', letterSpacing: '0.5px' }}
-                >
-                  FINANCIAL LEDGER
-                </span>
-                {periodFilter === 'last_month' && (
-                  <span 
-                    className="badge rounded-pill px-2.5 py-1 fw-bold"
-                    style={{ backgroundColor: '#FEF3C7', color: ERP_COLORS.warning, fontSize: '0.68rem' }}
-                  >
-                    LAST MONTH'S EXPENSES
-                  </span>
-                )}
-                {selectedEmployee && (
-                  <span 
-                    className="badge rounded-pill px-2.5 py-1 fw-bold"
-                    style={{ backgroundColor: '#DCFCE7', color: ERP_COLORS.success, fontSize: '0.68rem' }}
-                  >
-                    EMPLOYEE: {selectedEmployee.name.toUpperCase()}
-                  </span>
-                )}
-              </div>
-              <h3 className="fw-bold mb-1" style={{ color: ERP_COLORS.sidebar, fontSize: '1.4rem', letterSpacing: '-0.3px' }}>
-                Expense & Advance Hub
-              </h3>
-              <p className="small mb-0 text-muted" style={{ fontSize: '0.82rem' }}>
-                Monitor advance ledger balances, audit monthly claims, and verify employee reimbursement cycles.
-              </p>
-            </div>
-
-            {/* Action Buttons */}
-            <div className="d-flex flex-wrap align-items-center gap-2.5 gap-sm-3 w-100 w-md-auto mt-2 mt-md-0 pt-1 pt-md-0">
-              {canManageAdvance && (
-                <Link 
-                  to="/expenses/advances" 
-                  className="btn fw-semibold px-3.5 px-sm-4 py-2.5 flex-grow-1 flex-md-grow-0 erp-btn-hover"
-                  style={{ 
-                    borderRadius: '8px', 
-                    border: `1.5px solid ${ERP_COLORS.success}`, 
-                    color: ERP_COLORS.success,
-                    backgroundColor: ERP_COLORS.cardBg,
-                    fontSize: '0.84rem'
-                  }}
-                >
-                  🏦 Advance Management
-                </Link>
-              )}
-              <Link 
-                to="/expenses/submit" 
-                className="btn text-white fw-bold px-4 py-2.5 shadow-sm flex-grow-1 flex-md-grow-0 erp-btn-hover"
-                style={{ 
-                  borderRadius: '8px', 
-                  backgroundColor: ERP_COLORS.primary, 
-                  border: 'none',
-                  fontSize: '0.84rem'
-                }}
-              >
-                + Submit Claim
-              </Link>
-            </div>
-          </div>
-
-          {/* 2. KPI Balance Cards */}
-          <div className="row g-3 g-xl-4 mb-4">
-            <div className="col-12 col-md-4">
-              <div 
-                className="card border-0 shadow-sm rounded-4 text-white h-100 erp-card-elevated" 
-                style={{ background: `linear-gradient(135deg, ${ERP_COLORS.primary} 0%, ${ERP_COLORS.secondaryBlue} 100%)` }}
-              >
-                <div className="card-body p-3.5 p-sm-4 d-flex flex-column justify-content-between">
-                  <div className="d-flex justify-content-between align-items-center mb-3">
-                    <span className="small text-uppercase fw-bold opacity-75" style={{ fontSize: '0.70rem', letterSpacing: '0.5px' }}>
-                      Available Balance
-                    </span>
-                    <span className="fs-5">💳</span>
-                  </div>
-                  <div>
-                    <h2 className="fw-bold mb-1" style={{ fontSize: '1.75rem', letterSpacing: '-0.5px' }}>
-                      ₹{balance.currentBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </h2>
-                    <small className="opacity-75 d-block" style={{ fontSize: '0.75rem' }}>
-                      Remaining funds from disbursed advances
-                    </small>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="col-12 col-md-4">
-              <div 
-                className="card border-0 shadow-sm rounded-4 text-white h-100 erp-card-elevated" 
-                style={{ background: 'linear-gradient(135deg, #16A34A 0%, #15803D 100%)' }}
-              >
-                <div className="card-body p-3.5 p-sm-4 d-flex flex-column justify-content-between">
-                  <div className="d-flex justify-content-between align-items-center mb-3">
-                    <span className="small text-uppercase fw-bold opacity-75" style={{ fontSize: '0.70rem', letterSpacing: '0.5px' }}>
-                      Approved Expenses
-                    </span>
-                    <span className="fs-5">📊</span>
-                  </div>
-                  <div>
-                    <h2 className="fw-bold mb-1" style={{ fontSize: '1.75rem', letterSpacing: '-0.5px' }}>
-                      ₹{balance.totalExpensesDeducted.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </h2>
-                    <small className="opacity-75 d-block" style={{ fontSize: '0.75rem' }}>
-                      Total settled and deducted against ledger
-                    </small>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="col-12 col-md-4">
-              <div 
-                className="card border-0 shadow-sm rounded-4 text-white h-100 erp-card-elevated" 
-                style={{ background: 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)' }}
-              >
-                <div className="card-body p-3.5 p-sm-4 d-flex flex-column justify-content-between">
-                  <div className="d-flex justify-content-between align-items-center mb-3">
-                    <span className="small text-uppercase fw-bold opacity-75" style={{ fontSize: '0.70rem', letterSpacing: '0.5px' }}>
-                      Total Advance Received
-                    </span>
-                    <span className="fs-5">🏦</span>
-                  </div>
-                  <div>
-                    <h2 className="fw-bold mb-1" style={{ fontSize: '1.75rem', letterSpacing: '-0.5px' }}>
-                      ₹{balance.totalAdvanceReceived.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </h2>
-                    <small className="opacity-75 d-block" style={{ fontSize: '0.75rem' }}>
-                      Cumulative funds issued by company
-                    </small>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* 3. My Claims & Team Approvals Tabs */}
-          {canApprove && (
-            <div 
-              className="d-flex flex-wrap align-items-center gap-2 my-4 p-1.5 rounded-3 shadow-sm"
-              style={{ 
-                backgroundColor: ERP_COLORS.cardBg, 
-                border: `1px solid ${ERP_COLORS.border}`,
-                width: 'fit-content'
-              }}
+    <div className="erp-fade-in pb-4">
+      {/* ── Page Header ── */}
+      <PageHeader
+        title="Expense Claims & Advance Ledger"
+        subtitle="Manage employee reimbursements, receipt attachments, and corporate advance balances"
+        breadcrumbs={[{ label: 'Finance' }, { label: 'Expenses' }]}
+        actions={
+          <div className="d-flex align-items-center gap-2">
+            <button
+              type="button"
+              className="erp-btn erp-btn-secondary erp-btn-sm"
+              onClick={handleRefresh}
+              disabled={refreshing}
+              title="Refresh ledger records"
             >
+              <RefreshCw size={14} className={refreshing ? 'erp-spin' : ''} />
+              <span>Refresh</span>
+            </button>
+
+            {/* My Advance Statement Action (Phase 6) */}
+            {currentUser && (
               <button
                 type="button"
-                className="btn fw-bold px-4 py-2 erp-btn-hover"
-                onClick={() => setActiveTab('my')}
-                style={{
-                  borderRadius: '8px',
-                  backgroundColor: activeTab === 'my' ? ERP_COLORS.primary : 'transparent',
-                  color: activeTab === 'my' ? '#FFFFFF' : ERP_COLORS.textSecondary,
-                  border: 'none',
-                  fontSize: '0.84rem',
-                  boxShadow: activeTab === 'my' ? '0 3px 8px rgba(8, 127, 245, 0.25)' : 'none',
-                }}
+                className="erp-btn erp-btn-secondary erp-btn-sm d-inline-flex align-items-center gap-1.5"
+                onClick={() => setStatementModal({ show: true, userId: currentUser._id })}
+                title="View My Chronological Advance Statement"
               >
-                My Claims
+                <FileText size={14} />
+                <span>My Statement</span>
               </button>
+            )}
+
+            {canManageAdvance && (
+              <Link to="/expenses/advances" className="erp-btn erp-btn-secondary erp-btn-sm">
+                <Wallet size={14} />
+                <span>Advance Ledger</span>
+              </Link>
+            )}
+
+            <Link to="/expenses/submit" className="erp-btn erp-btn-primary erp-btn-sm">
+              <Plus size={15} />
+              <span>Submit Claim</span>
+            </Link>
+          </div>
+        }
+      />
+
+      {/* ── Tabs Navigation ── */}
+      <div className="erp-tab-group mb-4">
+        <button
+          type="button"
+          className={`erp-tab-btn ${activeTab === 'my' ? 'active' : ''}`}
+          onClick={() => setActiveTab('my')}
+        >
+          <Receipt size={16} />
+          <span>My Submitted Claims</span>
+        </button>
+
+        {canApprove && (
+          <button
+            type="button"
+            className={`erp-tab-btn ${activeTab === 'team' ? 'active' : ''}`}
+            onClick={() => setActiveTab('team')}
+          >
+            <CheckCircle2 size={16} />
+            <span>Team Approvals & Financial Review</span>
+            {teamOverview.summaryCards?.totalPendingClaims > 0 && (
+              <span className="badge bg-danger rounded-pill ms-1.5" style={{ fontSize: '11px' }}>
+                {teamOverview.summaryCards.totalPendingClaims}
+              </span>
+            )}
+          </button>
+        )}
+      </div>
+
+      {/* ══════════════════════════════════════════════════════════════════════
+          TAB 1: MY EXPENSES (PHASE 6 & PHASE 2A)
+         ══════════════════════════════════════════════════════════════════════ */}
+      {activeTab === 'my' && (
+        <>
+          {/* Employee Personal Summary Cards (Phase 6) */}
+          <div className="row g-3 mb-4">
+            <div className="col-12 col-sm-6 col-xl-2dot4 col-lg-4">
+              <StatCard
+                title="Advances Received"
+                value={`₹${(balance.totalAdvanceReceived || 0).toLocaleString()}`}
+                subtitle="Total corporate advances"
+                icon={Wallet}
+                variant="primary"
+              />
+            </div>
+
+            <div className="col-12 col-sm-6 col-xl-2dot4 col-lg-4">
+              <StatCard
+                title="Expenses Adjusted"
+                value={`₹${(balance.totalExpensesDeducted || 0).toLocaleString()}`}
+                subtitle="Deducted from advances"
+                icon={TrendingDown}
+                variant="danger"
+              />
+            </div>
+
+            <div className="col-12 col-sm-6 col-xl-2dot4 col-lg-4">
+              <StatCard
+                title="Available Advance"
+                value={`₹${(balance.currentBalance || 0).toLocaleString()}`}
+                subtitle={balance.currentBalance < 0 ? 'Negative balance' : 'Remaining advance'}
+                icon={TrendingUp}
+                variant={balance.currentBalance < 0 ? 'danger' : 'success'}
+              />
+            </div>
+
+            <div className="col-12 col-sm-6 col-xl-2dot4 col-lg-6">
+              <StatCard
+                title="Pending Claims"
+                value={`₹${(balance.pendingClaimsAmount || 0).toLocaleString()}`}
+                subtitle={`${balance.pendingClaimsCount || 0} claims awaiting review`}
+                icon={Clock}
+                variant="warning"
+              />
+            </div>
+
+            <div className="col-12 col-sm-6 col-xl-2dot4 col-lg-6">
+              <StatCard
+                title="Reimbursement Pending"
+                value={`₹${(balance.reimbursementsPendingAmount || 0).toLocaleString()}`}
+                subtitle="Approved personal payouts"
+                icon={CreditCard}
+                variant="info"
+              />
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ══════════════════════════════════════════════════════════════════════
+          TAB 2: TEAM APPROVALS & FINANCIAL REVIEW (PHASE 2B)
+         ══════════════════════════════════════════════════════════════════════ */}
+      {activeTab === 'team' && (
+        <>
+          {/* Global Company-Wide Date Filter Bar */}
+          <CompanyDateFilterBar
+            title="Team Approvals & Company-Wide Reporting Filter"
+            onFilterChange={(newFilter) => {
+              setTeamDateFilter(newFilter);
+              fetchData(newFilter);
+            }}
+            activeFilter={teamDateFilter}
+          />
+
+          {/* View Mode Toggle: Overview vs Periodic Reports */}
+          <div className="d-flex align-items-center justify-content-between mb-3 border-bottom pb-2">
+            <div className="d-flex align-items-center gap-2">
               <button
                 type="button"
-                className="btn fw-bold px-4 py-2 erp-btn-hover"
-                onClick={() => setActiveTab('team')}
-                style={{
-                  borderRadius: '8px',
-                  backgroundColor: activeTab === 'team' ? ERP_COLORS.primary : 'transparent',
-                  color: activeTab === 'team' ? '#FFFFFF' : ERP_COLORS.textSecondary,
-                  border: 'none',
-                  fontSize: '0.84rem',
-                  boxShadow: activeTab === 'team' ? '0 3px 8px rgba(8, 127, 245, 0.25)' : 'none',
-                }}
+                className={`btn btn-sm px-3 py-1.5 fw-semibold d-inline-flex align-items-center gap-1.5 ${
+                  teamView === 'overview'
+                    ? 'btn-primary text-white shadow-sm'
+                    : 'btn-light border text-secondary'
+                }`}
+                onClick={() => setTeamView('overview')}
               >
-                Team Approvals
+                <UserCheck size={14} />
+                <span>Employee Financial Overview</span>
+                <span className="badge bg-white text-primary rounded-pill small ms-1">
+                  {teamOverview.employeeSummaries?.length || 0}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                className={`btn btn-sm px-3 py-1.5 fw-semibold d-inline-flex align-items-center gap-1.5 ${
+                  teamView === 'reports'
+                    ? 'btn-primary text-white shadow-sm'
+                    : 'btn-light border text-secondary'
+                }`}
+                onClick={() => setTeamView('reports')}
+              >
+                <BarChart3 size={14} />
+                <span>Periodic Financial Reports</span>
               </button>
             </div>
+
+            <div className="text-muted small d-none d-md-block">
+              Filter Active: <strong className="text-dark">{teamDateFilter.label}</strong>
+            </div>
+          </div>
+
+          {teamView === 'reports' && (
+            <CompanyPeriodicReportView
+              dateFilter={teamDateFilter}
+              title="Team & Company Periodic Financial Reports"
+            />
           )}
 
-          {/* 4. Filter Toolbar with FIXED Segmented Quick Period Control */}
-          <div 
-            className="d-flex flex-column gap-3 mb-4 p-3.5 p-sm-4 rounded-4 shadow-sm"
-            style={{ backgroundColor: ERP_COLORS.cardBg, border: `1px solid ${ERP_COLORS.border}` }}
-          >
-            {/* Header Row with Records Counter and Segmented Quick Period */}
-            <div className="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-2.5">
-              <div className="d-flex align-items-center gap-2 flex-wrap">
-                <h6 className="fw-bold mb-0" style={{ color: ERP_COLORS.sidebar, fontSize: '0.94rem' }}>
-                  {activeTab === 'my' ? 'My Expense Submissions' : 'Team Submissions for Approval'}
+          {/* Team Summary Cards (Phase 2B) */}
+          <div className="row g-3 mb-4">
+            <div className="col-12 col-sm-6 col-lg-3">
+              <StatCard
+                title="Staff With Pending Claims"
+                value={teamOverview.summaryCards?.employeesWithPendingClaims || 0}
+                subtitle="Employees needing review"
+                icon={UserCheck}
+                variant="warning"
+              />
+            </div>
+
+            <div className="col-12 col-sm-6 col-lg-3">
+              <StatCard
+                title="Total Pending Claims"
+                value={teamOverview.summaryCards?.totalPendingClaims || 0}
+                subtitle="Claims awaiting action"
+                icon={Clock}
+                variant="primary"
+              />
+            </div>
+
+            <div className="col-12 col-sm-6 col-lg-3">
+              <StatCard
+                title="Pending Claim Amount"
+                value={`₹${(teamOverview.summaryCards?.totalPendingClaimAmount || 0).toLocaleString()}`}
+                subtitle="Total claim queue value"
+                icon={TrendingDown}
+                variant="danger"
+              />
+            </div>
+
+            <div className="col-12 col-sm-6 col-lg-3">
+              <StatCard
+                title="Total Outstanding Advances"
+                value={`₹${(teamOverview.summaryCards?.totalOutstandingEmployeeAdvances || 0).toLocaleString()}`}
+                subtitle="Active corporate advance total"
+                icon={Wallet}
+                variant="success"
+              />
+            </div>
+          </div>
+
+          {/* Employee-wise Financial Overview (Phase 2B) */}
+          <div className="erp-card p-3 mb-4">
+            <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+              <div>
+                <h6 className="fw-bold text-dark mb-0 fs-6">
+                  Employee-wise Financial Overview
                 </h6>
-                <span 
-                  className="badge rounded-pill fw-semibold"
-                  style={{ backgroundColor: '#F1F5F9', color: ERP_COLORS.textSecondary, border: `1px solid ${ERP_COLORS.border}`, fontSize: '0.72rem', padding: '4px 9px' }}
-                >
-                  {filteredClaims.length} records
-                </span>
-                {filteredTotalAmount > 0 && (
-                  <span 
-                    className="badge rounded-pill fw-bold"
-                    style={{ backgroundColor: '#DCFCE7', color: ERP_COLORS.success, fontSize: '0.72rem', padding: '4px 9px' }}
-                  >
-                    Total: ₹{filteredTotalAmount.toLocaleString()}
-                  </span>
-                )}
+                <small className="text-muted">
+                  Aggregated employee claim metrics, advance distributions, and financial ledger status
+                </small>
               </div>
 
-              {/* Seamless Segmented Control without overflow */}
-              <div 
-                className="d-inline-flex align-items-center rounded-3"
-                style={{ 
-                  backgroundColor: '#F1F5F9', 
-                  border: `1px solid ${ERP_COLORS.border}`,
-                  padding: '3px',
-                  gap: '3px'
-                }}
-              >
-                <span 
-                  style={{ 
-                    fontSize: '0.68rem', 
-                    fontWeight: '700', 
-                    color: ERP_COLORS.textSecondary, 
-                    textTransform: 'uppercase', 
-                    letterSpacing: '0.5px',
-                    padding: '0 8px 0 6px',
-                    userSelect: 'none'
+              <div className="d-flex align-items-center gap-2">
+                <input
+                  type="text"
+                  className="erp-input erp-search-input"
+                  placeholder="Filter employees..."
+                  style={{ width: '220px' }}
+                  value={employeeSearch}
+                  onChange={(e) => {
+                    setEmployeeSearch(e.target.value);
+                    setEmpPage(1);
                   }}
-                >
-                  Quick Period:
-                </span>
-
-                {/* All Button */}
-                <button
-                  type="button"
-                  className="btn p-0"
-                  onClick={() => { setPeriodFilter(''); setPage(1); }}
-                  style={{
-                    height: '28px',
-                    padding: '0 12px',
-                    fontSize: '0.74rem',
-                    fontWeight: periodFilter === '' ? '700' : '500',
-                    color: periodFilter === '' ? '#087FF5' : ERP_COLORS.textSecondary,
-                    backgroundColor: periodFilter === '' ? '#FFFFFF' : 'transparent',
-                    borderRadius: '6px',
-                    border: 'none',
-                    boxShadow: periodFilter === '' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-                    transition: 'all 0.15s ease',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center'
-                  }}
-                >
-                  All
-                </button>
-
-                {/* This Month Button */}
-                <button
-                  type="button"
-                  className="btn p-0"
-                  onClick={() => { setPeriodFilter('this_month'); setPage(1); }}
-                  style={{
-                    height: '28px',
-                    padding: '0 12px',
-                    fontSize: '0.74rem',
-                    fontWeight: periodFilter === 'this_month' ? '700' : '500',
-                    color: periodFilter === 'this_month' ? '#087FF5' : ERP_COLORS.textSecondary,
-                    backgroundColor: periodFilter === 'this_month' ? '#FFFFFF' : 'transparent',
-                    borderRadius: '6px',
-                    border: 'none',
-                    boxShadow: periodFilter === 'this_month' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-                    transition: 'all 0.15s ease',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center'
-                  }}
-                >
-                  This Month
-                </button>
-
-                {/* Last Month Button */}
-                <button
-                  type="button"
-                  className="btn p-0"
-                  onClick={() => { setPeriodFilter('last_month'); setPage(1); }}
-                  style={{
-                    height: '28px',
-                    padding: '0 12px',
-                    fontSize: '0.74rem',
-                    fontWeight: periodFilter === 'last_month' ? '700' : '600',
-                    color: periodFilter === 'last_month' ? '#B45309' : '#D97706',
-                    backgroundColor: periodFilter === 'last_month' ? '#FEF3C7' : 'transparent',
-                    borderRadius: '6px',
-                    border: periodFilter === 'last_month' ? '1px solid #FDE68A' : 'none',
-                    boxShadow: periodFilter === 'last_month' ? '0 1px 3px rgba(217, 119, 6, 0.15)' : 'none',
-                    transition: 'all 0.15s ease',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '4px'
-                  }}
-                >
-                  <span>📅</span> Last Month
-                </button>
+                />
               </div>
             </div>
 
-            {/* Inputs & Hybrid Combobox Row */}
-            <div className="row g-2.5 align-items-center pt-2 border-top" style={{ borderColor: '#F1F5F9' }}>
-              
-              {/* Dual-Function Search Box & Employee Dropdown with Enlarged Chevron */}
-              <div className="col-12 col-md-5" ref={searchBoxRef}>
-                <div className="position-relative">
-                  <div className="input-group">
-                    <span 
-                      className="input-group-text bg-white border-end-0 text-muted"
-                      style={{ borderColor: selectedEmployee ? '#087FF5' : '#CBD5E1', padding: '0 12px' }}
-                    >
-                      {selectedEmployee ? '👤' : '🔍'}
-                    </span>
-                    <input
-                      type="text"
-                      className="form-control form-control-sm border-start-0 border-end-0 shadow-none erp-input-focus"
-                      placeholder={selectedEmployee ? `Selected: ${selectedEmployee.name}` : "Search by employee, claim #, or item..."}
-                      value={searchQuery}
-                      onFocus={() => setIsEmployeeDropdownOpen(true)}
-                      onChange={(e) => {
-                        setSearchQuery(e.target.value);
-                        if (selectedEmployee) setSelectedEmployee(null);
-                        setIsEmployeeDropdownOpen(true);
-                      }}
-                      style={{ 
-                        borderColor: selectedEmployee ? '#087FF5' : '#CBD5E1', 
-                        padding: '8px 12px',
-                        fontSize: '0.82rem',
-                        height: '38px',
-                        fontWeight: selectedEmployee ? '600' : 'normal',
-                        color: selectedEmployee ? '#087FF5' : ERP_COLORS.textPrimary
-                      }}
-                    />
-
-                    {/* Clear Button */}
-                    {(searchQuery || selectedEmployee) && (
-                      <button
-                        type="button"
-                        className="btn btn-outline-secondary border-start-0 border-end-0 bg-white d-flex align-items-center justify-content-center"
-                        style={{ 
-                          borderColor: selectedEmployee ? '#087FF5' : '#CBD5E1', 
-                          color: '#94A3B8',
-                          padding: '0 10px'
-                        }}
-                        onClick={handleClearEmployeeSelection}
-                        title="Clear search"
-                      >
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                          <line x1="18" y1="6" x2="6" y2="18"></line>
-                          <line x1="6" y1="6" x2="18" y2="18"></line>
-                        </svg>
-                      </button>
-                    )}
-
-                    {/* Enlarged Chevron Dropdown Icon with Smooth 180° Flip */}
-                    <button
-                      type="button"
-                      className="btn btn-light border-start-0 d-flex align-items-center justify-content-center"
-                      onClick={() => setIsEmployeeDropdownOpen(!isEmployeeDropdownOpen)}
-                      title="View all employees"
-                      style={{ 
-                        borderColor: selectedEmployee ? '#087FF5' : '#CBD5E1',
-                        backgroundColor: isEmployeeDropdownOpen ? '#E2E8F0' : '#F8FAFC',
-                        padding: '0 14px',
-                        height: '38px',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      <svg 
-                        width="18" 
-                        height="18" 
-                        viewBox="0 0 24 24" 
-                        fill="none" 
-                        stroke={isEmployeeDropdownOpen ? '#087FF5' : '#475569'} 
-                        strokeWidth="2.5" 
-                        strokeLinecap="round" 
-                        strokeLinejoin="round"
-                        style={{
-                          transition: 'transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), stroke 0.2s ease',
-                          transform: isEmployeeDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)',
-                          display: 'block'
-                        }}
-                      >
-                        <polyline points="6 9 12 15 18 9"></polyline>
-                      </svg>
-                    </button>
-                  </div>
-
-                  {/* Floating Employee Selection Menu */}
-                  {isEmployeeDropdownOpen && (
-                    <div className="combobox-menu">
-                      <div className="p-2 border-bottom d-flex justify-content-between align-items-center bg-light">
-                        <span className="small fw-bold text-uppercase text-muted" style={{ fontSize: '0.68rem', letterSpacing: '0.5px' }}>
-                          Select Employee Directory ({uniqueEmployees.length})
-                        </span>
-                        {selectedEmployee && (
-                          <button
-                            type="button"
-                            className="btn btn-link btn-sm p-0 text-decoration-none text-danger fw-semibold"
-                            style={{ fontSize: '0.72rem' }}
-                            onClick={handleClearEmployeeSelection}
-                          >
-                            Reset
-                          </button>
-                        )}
-                      </div>
-
-                      {filteredDropdownEmployees.length === 0 ? (
-                        <div className="p-3 text-center text-muted small" style={{ fontSize: '0.80rem' }}>
-                          No matching employee found
-                        </div>
-                      ) : (
-                        filteredDropdownEmployees.map((emp) => {
-                          const isSelected = selectedEmployee?.id === emp.id;
-                          return (
-                            <div
-                              key={emp.id}
-                              className={`combobox-item d-flex align-items-center justify-content-between ${isSelected ? 'active' : ''}`}
-                              onClick={() => handleSelectEmployee(emp)}
-                            >
-                              <div className="d-flex align-items-center gap-2">
-                                <div
-                                  className="rounded-circle d-flex align-items-center justify-content-center text-white fw-bold"
-                                  style={{
-                                    width: '32px',
-                                    height: '32px',
-                                    backgroundColor: isSelected ? ERP_COLORS.primary : '#64748B',
-                                    fontSize: '0.78rem'
-                                  }}
-                                >
-                                  {emp.name.charAt(0).toUpperCase()}
-                                </div>
-                                <div>
-                                  <div className="fw-bold text-dark" style={{ fontSize: '0.82rem' }}>
-                                    {emp.name}
-                                  </div>
-                                  <small className="text-muted d-block" style={{ fontSize: '0.70rem' }}>
-                                    {emp.email || `ID: ${emp.employeeId}`}
-                                  </small>
-                                </div>
-                              </div>
-                              <span 
-                                className="badge rounded-pill fw-semibold"
-                                style={{ backgroundColor: '#F1F5F9', color: '#64748B', fontSize: '0.68rem' }}
-                              >
-                                {emp.count} claim{emp.count > 1 ? 's' : ''}
-                              </span>
-                            </div>
-                          );
-                        })
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Specific Period Dropdown */}
-              <div className="col-6 col-md-3">
-                <select 
-                  className="form-select form-select-sm fw-semibold shadow-none erp-input-focus"
-                  value={periodFilter}
-                  onChange={(e) => { setPeriodFilter(e.target.value); setPage(1); }}
-                  style={{ 
-                    borderRadius: '8px', 
-                    borderColor: periodFilter === 'last_month' ? '#F59E0B' : '#CBD5E1', 
-                    padding: '8px 14px',
-                    fontSize: '0.82rem',
-                    height: '38px',
-                    backgroundColor: periodFilter === 'last_month' ? '#FFFBEB' : '#FFFFFF'
-                  }}
-                >
-                  <option value="">📅 All Time</option>
-                  <option value="this_month">Current Month</option>
-                  <option value="last_month">Last Month's Expenses</option>
-                  <option value="last_30_days">Last 30 Days</option>
-                  <option value="this_year">This Financial Year</option>
-                </select>
-              </div>
-
-              {/* Status Filter */}
-              <div className="col-6 col-md-2">
-                <select 
-                  className="form-select form-select-sm fw-semibold shadow-none erp-input-focus"
-                  value={statusFilter}
-                  onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
-                  style={{ 
-                    borderRadius: '8px', 
-                    borderColor: '#CBD5E1', 
-                    padding: '8px 14px',
-                    fontSize: '0.82rem',
-                    height: '38px',
-                  }}
-                >
-                  <option value="">All Statuses</option>
-                  <option value="Pending">Pending Only</option>
-                  <option value="Approved">Approved Only</option>
-                  <option value="Rejected">Rejected Only</option>
-                </select>
-              </div>
-
-              {/* Actions & Refresh */}
-              <div className="col-12 col-md-2 d-flex justify-content-end align-items-center gap-2 mt-2 mt-md-0">
-                {(statusFilter || periodFilter || searchQuery || selectedEmployee) && (
-                  <button
-                    type="button"
-                    className="btn btn-sm btn-link text-decoration-none text-danger fw-semibold p-0 me-2"
-                    style={{ fontSize: '0.78rem' }}
-                    onClick={() => {
-                      setStatusFilter('');
-                      setPeriodFilter('');
-                      setSearchQuery('');
-                      setSelectedEmployee(null);
-                      setPage(1);
-                    }}
-                  >
-                    Clear All
-                  </button>
-                )}
-
-                <button
-                  type="button"
-                  className="btn btn-sm px-3 erp-btn-hover d-flex align-items-center justify-content-center"
-                  onClick={fetchData}
-                  title="Refresh claims"
-                  style={{ 
-                    borderRadius: '8px', 
-                    border: `1px solid ${ERP_COLORS.silver}`, 
-                    backgroundColor: ERP_COLORS.cardBg,
-                    color: ERP_COLORS.textSecondary,
-                    height: '38px',
-                  }}
-                >
-                  ↻ Refresh
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* 5. Claims Table */}
-          <div 
-            className="card border-0 shadow-sm rounded-4 overflow-hidden mb-4" 
-            style={{ border: `1px solid ${ERP_COLORS.border}` }}
-          >
-            <div className="card-body p-0">
-              {loading ? (
-                <div className="py-5 text-center">
-                  <LoadingSpinner text="Loading expense claims..." />
-                </div>
-              ) : filteredClaims.length === 0 ? (
-                <div className="text-center py-5 px-4" style={{ backgroundColor: ERP_COLORS.cardBg }}>
-                  <div 
-                    className="d-inline-flex align-items-center justify-content-center rounded-circle mb-3"
-                    style={{ width: '64px', height: '64px', backgroundColor: '#F1F5F9', color: ERP_COLORS.textSecondary }}
-                  >
-                    <span style={{ fontSize: '1.8rem' }}>🧾</span>
-                  </div>
-                  <h5 className="fw-bold mb-1" style={{ color: ERP_COLORS.sidebar, fontSize: '1.15rem' }}>No expense claims found</h5>
-                  <p className="small mx-auto mb-4" style={{ maxWidth: '440px', color: ERP_COLORS.textSecondary, fontSize: '0.80rem' }}>
-                    {selectedEmployee
-                      ? `No claims found for ${selectedEmployee.name}.`
-                      : periodFilter === 'last_month'
-                      ? "No expense submissions found for last month."
-                      : "Try clearing search filters or choosing a different status."}
-                  </p>
-                  <Link 
-                    to="/expenses/submit" 
-                    className="btn text-white fw-bold px-4 py-2.5 shadow-sm erp-btn-hover"
-                    style={{ borderRadius: '8px', backgroundColor: ERP_COLORS.primary, border: 'none', fontSize: '0.84rem' }}
-                  >
-                    + Submit Claim
-                  </Link>
-                </div>
-              ) : (
-                <div className="table-responsive">
-                  <table className="table align-middle mb-0 text-nowrap">
-                    <thead style={{ backgroundColor: '#F8FAFC', borderBottom: `1px solid ${ERP_COLORS.border}` }}>
-                      <tr style={{ color: ERP_COLORS.textSecondary, fontSize: '0.74rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                        <th className="py-3 px-3 px-md-4">Claim ID</th>
-                        {activeTab === 'team' && <th className="py-3 px-3">Employee</th>}
-                        <th className="py-3 px-3">Date</th>
-                        <th className="py-3 px-3">Items</th>
-                        <th className="py-3 px-3">Total Amount</th>
-                        <th className="py-3 px-3">Status</th>
-                        <th className="text-end py-3 px-3 px-md-4">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredClaims.map((claim) => (
-                        <tr key={claim._id} className="erp-table-row" style={{ borderBottom: `1px solid ${ERP_COLORS.border}` }}>
-                          <td className="py-3.5 px-3 px-md-4 fw-semibold font-monospace" style={{ color: ERP_COLORS.primary, fontSize: '0.84rem' }}>
-                            #{claim._id.slice(-6).toUpperCase()}
-                          </td>
-
-                          {activeTab === 'team' && (
-                            <td className="py-3.5 px-3">
-                              <div className="fw-bold text-truncate" style={{ maxWidth: '170px', color: ERP_COLORS.textPrimary, fontSize: '0.84rem' }}>
-                                {claim.userId?.name || 'Unknown'}
-                              </div>
-                              <small className="text-truncate d-block" style={{ maxWidth: '170px', color: ERP_COLORS.textSecondary, fontSize: '0.72rem' }}>
-                                {claim.userId?.email}
-                              </small>
-                            </td>
-                          )}
-
-                          <td className="py-3.5 px-3 small" style={{ color: ERP_COLORS.textSecondary, fontSize: '0.80rem' }}>
-                            {new Date(claim.createdAt || claim.date).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
-                          </td>
-
-                          <td className="py-3.5 px-3">
-                            <span 
-                              className="badge rounded-pill fw-semibold"
-                              style={{ 
-                                backgroundColor: '#F1F5F9', 
-                                color: ERP_COLORS.textSecondary, 
-                                border: `1px solid ${ERP_COLORS.border}`,
-                                fontSize: '0.72rem',
-                                padding: '5px 9px',
-                              }}
-                            >
-                              {claim.items.length} item{claim.items.length > 1 ? 's' : ''}
-                            </span>
-                          </td>
-
-                          <td className="py-3.5 px-3 fw-bold" style={{ color: ERP_COLORS.sidebar, fontSize: '0.90rem' }}>
-                            ₹{claim.totalClaimAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                          </td>
-
-                          <td className="py-3.5 px-3">{getStatusBadge(claim.status)}</td>
-
-                          <td className="text-end py-3.5 px-3 px-md-4">
-                            <div className="d-flex align-items-center justify-content-end gap-2 flex-nowrap">
-                              <button 
-                                type="button"
-                                className="btn btn-sm fw-semibold text-nowrap erp-btn-hover"
-                                onClick={() => setViewModal({ show: true, claim })}
-                                style={{ 
-                                  borderRadius: '6px', 
-                                  border: `1px solid ${ERP_COLORS.silver}`, 
-                                  backgroundColor: ERP_COLORS.cardBg,
-                                  color: ERP_COLORS.textPrimary,
-                                  fontSize: '0.76rem',
-                                  padding: '6px 13px'
-                                }}
-                              >
-                                View Details
-                              </button>
-                              
-                              {activeTab === 'team' && claim.status === 'Pending' && (
-                                <>
-                                  <button 
-                                    type="button"
-                                    className="btn btn-sm text-white fw-bold text-nowrap erp-btn-hover"
-                                    onClick={() => handleApprove(claim._id)}
-                                    disabled={processingId === claim._id}
-                                    style={{ 
-                                      borderRadius: '6px', 
-                                      backgroundColor: ERP_COLORS.success,
-                                      border: 'none',
-                                      fontSize: '0.76rem',
-                                      padding: '6px 13px',
-                                    }}
-                                  >
-                                    Approve
-                                  </button>
-
-                                  <button 
-                                    type="button"
-                                    className="btn btn-sm text-white fw-bold text-nowrap erp-btn-hover"
-                                    onClick={() => setRejectModal({ show: true, claimId: claim._id, reason: '' })}
-                                    disabled={processingId === claim._id}
-                                    style={{ 
-                                      borderRadius: '6px', 
-                                      backgroundColor: ERP_COLORS.error,
-                                      border: 'none',
-                                      fontSize: '0.76rem',
-                                      padding: '6px 13px',
-                                    }}
-                                  >
-                                    Reject
-                                  </button>
-                                </>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-
-            {!loading && filteredClaims.length > 0 && (
-              <div 
-                className="card-footer bg-white border-top px-3 px-md-4 py-3 d-flex justify-content-center justify-content-md-end"
-                style={{ borderColor: ERP_COLORS.border }}
-              >
-                <Pagination pagination={pagination} onPageChange={setPage} />
-              </div>
-            )}
-          </div>
-
-        </div>
-
-        {/* View Claim Modal */}
-        {viewModal.claim && (
-          <Modal 
-            show={viewModal.show} 
-            title={`Claim #${viewModal.claim._id.slice(-6).toUpperCase()}`} 
-            onClose={() => setViewModal({ show: false, claim: null })}
-          >
-            <div className="p-3.5 mb-3.5 rounded-3" style={{ backgroundColor: '#F8FAFC', border: `1px solid ${ERP_COLORS.border}` }}>
-              <div className="row g-3">
-                <div className="col-6"><small className="text-muted d-block mb-0.5">Employee</small><strong>{viewModal.claim.userId?.name}</strong></div>
-                <div className="col-6"><small className="text-muted d-block mb-0.5">Status</small>{getStatusBadge(viewModal.claim.status)}</div>
-                <div className="col-6"><small className="text-muted d-block mb-0.5">Submitted On</small>{new Date(viewModal.claim.createdAt).toLocaleDateString()}</div>
-                <div className="col-6">
-                  <small className="text-muted d-block mb-0.5">Total Claim</small>
-                  <span className="fs-6 fw-bold text-success">₹{viewModal.claim.totalClaimAmount.toLocaleString()}</span>
-                </div>
-                {viewModal.claim.rejectionReason && (
-                  <div className="col-12 mt-2 pt-2 border-top">
-                    <strong className="text-danger small d-block mb-0.5">Rejection Reason:</strong>
-                    <div className="text-danger small">{viewModal.claim.rejectionReason}</div>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <h6 className="fw-bold mb-3" style={{ color: ERP_COLORS.sidebar, fontSize: '0.88rem' }}>
-              Itemized Breakdown & Receipts
-            </h6>
-            
-            <div className="table-responsive mb-3">
-              <table className="table table-bordered table-sm align-middle mb-0">
-                <thead style={{ backgroundColor: '#F1F5F9' }}>
-                  <tr className="small text-secondary" style={{ fontSize: '0.74rem' }}>
-                    <th className="p-2.5">Date</th>
-                    <th className="p-2.5">Category</th>
-                    <th className="p-2.5">Description</th>
-                    <th className="p-2.5 text-end">Amount</th>
-                    <th className="p-2.5 text-center">Receipt(s) & Download</th>
+            <div className="table-responsive border rounded-3">
+              <table className="erp-table mb-0 table-sm">
+                <thead>
+                  <tr>
+                    <th>Employee Name</th>
+                    <th>Emp ID</th>
+                    <th>Email</th>
+                    <th className="text-center">Total Claims</th>
+                    <th className="text-end text-warning">Pending (Count / ₹)</th>
+                    <th className="text-end text-primary">Approved (₹)</th>
+                    <th className="text-end text-muted">Advances Issued (₹)</th>
+                    <th className="text-end text-danger">Adjusted (₹)</th>
+                    <th className="text-end text-success fs-6">Advance Balance</th>
+                    <th className="text-end">Action</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {viewModal.claim.items.map((item, idx) => {
-                    const allReceipts = item.receiptUrls && item.receiptUrls.length > 0 
-                      ? item.receiptUrls 
-                      : (item.receiptUrl ? [item.receiptUrl] : []);
-
-                    const empId = viewModal.claim.userId?.employeeId 
-                      || viewModal.claim.userId?._id?.slice(-6) 
-                      || 'EMP';
-
-                    return (
-                      <tr key={idx}>
-                        <td className="p-2.5 small text-nowrap">{new Date(item.date).toLocaleDateString()}</td>
-                        <td className="p-2.5"><span className="badge bg-light text-dark border small">{item.category}</span></td>
-                        <td className="p-2.5 small">{item.description}</td>
-                        <td className="p-2.5 text-end fw-bold small text-nowrap">₹{item.amount.toLocaleString()}</td>
-                        <td className="p-2.5 text-center">
-                          {allReceipts.length > 0 ? (
-                            <div className="d-flex justify-content-center gap-2 flex-wrap">
-                              {allReceipts.map((url, rIdx) => {
-                                const isPdf = /\.pdf($|\?)/i.test(url);
-                                return (
-                                  <div
-                                    key={rIdx}
-                                    className="d-inline-flex align-items-center rounded-2 overflow-hidden shadow-sm"
-                                    style={{
-                                      border: `1px solid ${ERP_COLORS.border}`,
-                                      backgroundColor: '#FFFFFF',
-                                      boxShadow: '0 2px 6px rgba(0, 0, 0, 0.08)'
-                                    }}
-                                  >
-                                    <button
-                                      type="button"
-                                      className="btn btn-sm fw-semibold erp-btn-hover"
-                                      onClick={() => setPreviewReceipt(url)}
-                                      style={{
-                                        fontSize: '0.72rem',
-                                        backgroundColor: '#EBF4FE',
-                                        color: ERP_COLORS.primary,
-                                        border: 'none',
-                                        padding: '4px 8px',
-                                      }}
-                                      title="Inspect Receipt"
-                                    >
-                                      {isPdf ? '📄 PDF #' + (rIdx + 1) : '🧾 Bill #' + (rIdx + 1)}
-                                    </button>
-
-                                    <button
-                                      type="button"
-                                      className="btn btn-sm btn-light fw-bold text-success erp-btn-hover"
-                                      onClick={() => handleDownloadModalReceipt(url, empId, item.date, rIdx)}
-                                      style={{
-                                        fontSize: '0.75rem',
-                                        borderLeft: `1px solid ${ERP_COLORS.border}`,
-                                        borderTop: 'none',
-                                        borderRight: 'none',
-                                        borderBottom: 'none',
-                                        padding: '4px 8px',
-                                      }}
-                                      title={`Save as: ${empId}_${new Date(item.date).toISOString().split('T')[0]}_Receipt_${rIdx + 1}`}
-                                    >
-                                      📥 Save
-                                    </button>
-                                  </div>
-                                );
-                              })}
-                            </div>
+                  {paginatedEmployeeSummaries.length === 0 ? (
+                    <tr>
+                      <td colSpan="10" className="text-center py-4 text-muted">
+                        No employee summary records found.
+                      </td>
+                    </tr>
+                  ) : (
+                    paginatedEmployeeSummaries.map((emp) => (
+                      <tr key={emp._id}>
+                        <td>
+                          <div className="fw-bold text-dark">{emp.name}</div>
+                          <small className="text-muted">{emp.department} • {emp.designation}</small>
+                        </td>
+                        <td>
+                          <span className="font-monospace fw-semibold text-secondary small">
+                            {emp.employeeId}
+                          </span>
+                        </td>
+                        <td className="small text-muted">{emp.email}</td>
+                        <td className="text-center font-monospace fw-semibold">
+                          {emp.totalClaimsSubmitted}
+                        </td>
+                        <td className="text-end font-monospace">
+                          {(emp.pendingClaimsCount || 0) > 0 ? (
+                            <span className="text-warning-emphasis fw-bold">
+                              {emp.pendingClaimsCount} (₹{(emp.pendingClaimAmount ?? emp.pendingAmount ?? 0).toLocaleString()})
+                            </span>
                           ) : (
-                            <span className="text-muted small">None</span>
+                            <span className="text-muted">—</span>
                           )}
                         </td>
+                        <td className="text-end font-monospace fw-semibold text-primary">
+                          ₹{(emp.approvedClaimsAmount ?? emp.approvedAmount ?? 0).toLocaleString()}
+                        </td>
+                        <td className="text-end font-monospace fw-semibold text-muted">
+                          ₹{(emp.totalAdvancesIssued || 0).toLocaleString()}
+                        </td>
+                        <td className="text-end font-monospace fw-semibold text-danger">
+                          -₹{(emp.totalExpensesAdjusted || 0).toLocaleString()}
+                        </td>
+                        <td className="text-end font-monospace fw-bold fs-6">
+                          {(() => {
+                            const bal = emp.currentAdvanceBalance ?? emp.outstandingAdvanceBalance ?? 0;
+                            return (
+                              <span
+                                className={
+                                  bal > 0
+                                    ? 'text-success'
+                                    : bal < 0
+                                    ? 'text-danger'
+                                    : 'text-muted'
+                                }
+                              >
+                                ₹{bal.toLocaleString()}
+                              </span>
+                            );
+                          })()}
+                        </td>
+                        <td className="text-end text-nowrap">
+                          <button
+                            type="button"
+                            className="erp-btn erp-btn-secondary erp-btn-sm d-inline-flex align-items-center gap-1"
+                            onClick={() => setStatementModal({ show: true, userId: emp._id })}
+                            title="View Employee Financial Statement & Ledger"
+                          >
+                            <FileText size={12} />
+                            <span>View Details</span>
+                          </button>
+                        </td>
                       </tr>
-                    );
-                  })}
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
 
-            <div className="d-flex justify-content-end pt-3 border-top">
-              <button 
-                className="btn btn-light fw-semibold px-4 py-2 erp-btn-hover" 
-                onClick={() => setViewModal({ show: false, claim: null })}
-                style={{ borderRadius: '8px', border: `1px solid ${ERP_COLORS.silver}`, fontSize: '0.82rem' }}
-              >
-                Close
-              </button>
-            </div>
-          </Modal>
-        )}
-
-        {/* Cloudinary Receipt Preview Modal */}
-        {previewReceipt && (
-          <Modal show={Boolean(previewReceipt)} title="Receipt Preview" onClose={() => setPreviewReceipt(null)}>
-            <div className="text-center p-3 p-md-4">
-              <img 
-                src={previewReceipt} 
-                alt="Receipt Preview" 
-                className="img-fluid rounded shadow-sm mb-4" 
-                style={{ maxHeight: '65vh', objectFit: 'contain' }} 
-              />
-              <div>
-                <a 
-                  href={previewReceipt} 
-                  target="_blank" 
-                  rel="noreferrer" 
-                  className="btn text-white fw-bold px-4 py-2.5 erp-btn-hover"
-                  style={{ borderRadius: '8px', backgroundColor: ERP_COLORS.primary, fontSize: '0.84rem' }}
-                >
-                  Open Full Size ↗
-                </a>
+            {filteredEmployeeSummaries.length > empPerPage && (
+              <div className="p-2 pt-3 d-flex justify-content-end">
+                <Pagination
+                  pagination={{
+                    page: empPage,
+                    totalPages: Math.ceil(filteredEmployeeSummaries.length / empPerPage) || 1,
+                    total: filteredEmployeeSummaries.length,
+                  }}
+                  onPageChange={(p) => setEmpPage(p)}
+                />
               </div>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* ── Claims Filter Bar ── */}
+      <div className="erp-card p-3 mb-3">
+        <div className="row g-2 align-items-center">
+          <div className="col-12 col-md-4">
+            <div className="erp-search-group">
+              <span className="erp-search-icon">
+                <Search size={15} />
+              </span>
+              <input
+                type="text"
+                className="erp-input erp-search-input"
+                placeholder="Search claims by ID, employee, or note..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="col-6 col-md-2">
+            <select
+              className="erp-select"
+              value={statusFilter}
+              onChange={(e) => {
+                setStatusFilter(e.target.value);
+                setPage(1);
+              }}
+            >
+              <option value="">All Review Statuses</option>
+              <option value="Pending">Pending Review</option>
+              <option value="Approved">Approved</option>
+              <option value="Rejected">Rejected</option>
+            </select>
+          </div>
+
+          <div className="col-6 col-md-2">
+            <select
+              className="erp-select"
+              value={settlementFilter}
+              onChange={(e) => {
+                setSettlementFilter(e.target.value);
+                setPage(1);
+              }}
+            >
+              <option value="">All Settlements</option>
+              <option value="UNSETTLED">Unsettled</option>
+              <option value="SETTLED_ADVANCE">Adjusted Advance</option>
+              <option value="REIMBURSED">Reimbursed / Paid</option>
+            </select>
+          </div>
+
+          <div className="col-6 col-md-2">
+            <input
+              type="date"
+              className="erp-input"
+              value={dateFrom}
+              onChange={(e) => {
+                setDateFrom(e.target.value);
+                setPage(1);
+              }}
+              title="From Date"
+            />
+          </div>
+
+          <div className="col-6 col-md-2 text-md-end text-muted small">
+            <span>
+              Showing {filteredClaims.length} of {pagination.total || claims.length} records
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Claims Data Table ── */}
+      {loading ? (
+        <TableSkeleton rows={6} cols={7} />
+      ) : filteredClaims.length === 0 ? (
+        <div className="erp-card p-5 text-center">
+          <EmptyState
+            icon={Receipt}
+            title={activeTab === 'my' ? 'No expense claims submitted' : 'No claims found'}
+            description={
+              activeTab === 'my'
+                ? 'You have not submitted any reimbursement claims yet.'
+                : 'There are no claims matching your filter criteria.'
+            }
+            actionLabel={activeTab === 'my' ? 'Submit Claim' : undefined}
+            onAction={activeTab === 'my' ? () => {} : undefined}
+          />
+        </div>
+      ) : (
+        <div className="erp-table-container">
+          <div className="table-responsive">
+            <table className="erp-table">
+              <thead>
+                <tr>
+                  <th>Claim ID</th>
+                  {activeTab === 'team' && <th>Employee</th>}
+                  <th>Items / Category</th>
+                  <th>Claim Amount</th>
+                  <th>Approved Amount</th>
+                  <th>Date Logged</th>
+                  <th>Receipts</th>
+                  <th>Status</th>
+                  <th>Settlement</th>
+                  <th className="text-end">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredClaims.map((claim) => {
+                  const claimReceipts = getClaimReceipts(claim);
+                  const isSettledAdvance = claim.settlementStatus === 'SETTLED_ADVANCE';
+                  const isReimbursed = claim.settlementStatus === 'REIMBURSED';
+
+                  return (
+                    <tr key={claim._id}>
+                      {/* Claim ID */}
+                      <td>
+                        <span className="font-monospace fw-bold text-primary small">
+                          #{claim._id?.slice(-6).toUpperCase()}
+                        </span>
+                      </td>
+
+                      {/* Employee (Team tab) */}
+                      {activeTab === 'team' && (
+                        <td>
+                          <div className="fw-semibold text-dark">
+                            {claim.userId?.name || 'Staff Member'}
+                          </div>
+                          <small className="text-muted d-block">
+                            {claim.userId?.employeeId || claim.userId?.email || '—'}
+                          </small>
+                        </td>
+                      )}
+
+                      {/* Items / Category */}
+                      <td>
+                        <div className="small fw-semibold text-dark">
+                          {claim.items?.[0]?.category || 'General Expense'}
+                        </div>
+                        <small className="text-muted text-truncate d-block" style={{ maxWidth: '220px' }}>
+                          {claim.items?.[0]?.description || 'Travel & operational expense'}
+                          {claim.items?.length > 1 && ` (+${claim.items.length - 1} more)`}
+                        </small>
+                      </td>
+
+                      {/* Claim Amount */}
+                      <td>
+                        <span className="fw-bold font-monospace text-dark">
+                          ₹{(claim.totalClaimAmount || 0).toLocaleString()}
+                        </span>
+                      </td>
+
+                      {/* Approved Amount */}
+                      <td>
+                        <span className="font-monospace fw-semibold text-primary">
+                          {claim.approvedAmount ? `₹${claim.approvedAmount.toLocaleString()}` : '—'}
+                        </span>
+                      </td>
+
+                      {/* Date */}
+                      <td className="small text-nowrap">
+                        {new Date(claim.createdAt || claim.date).toLocaleDateString('en-IN', {
+                          month: 'short',
+                          day: 'numeric',
+                          year: 'numeric',
+                        })}
+                      </td>
+
+                      {/* Receipts */}
+                      <td>
+                        {claimReceipts.length > 0 ? (
+                          <button
+                            type="button"
+                            className="erp-btn erp-btn-secondary erp-btn-sm p-1 px-2 d-inline-flex align-items-center gap-1.5"
+                            onClick={() =>
+                              setReceiptModal({
+                                show: true,
+                                claimId: claim._id,
+                                receipts: claimReceipts,
+                                currentIndex: 0,
+                              })
+                            }
+                            title={`Inspect ${claimReceipts.length} Attached Receipt${claimReceipts.length > 1 ? 's' : ''}`}
+                          >
+                            <Eye size={13} />
+                            <span>View</span>
+                            <span
+                              className={`badge rounded-pill px-1.5 py-0.5 ${
+                                claimReceipts.length > 1
+                                  ? 'bg-primary text-white'
+                                  : 'bg-secondary-subtle text-secondary'
+                              }`}
+                              style={{ fontSize: '10px', lineHeight: 1 }}
+                            >
+                              {claimReceipts.length}
+                            </span>
+                          </button>
+                        ) : (
+                          <span className="text-muted small">No receipt</span>
+                        )}
+                      </td>
+
+                      {/* Approval Status */}
+                      <td>
+                        <StatusBadge status={claim.status || 'Pending'} size="sm" />
+                      </td>
+
+                      {/* Settlement Status */}
+                      <td>
+                        <span
+                          className={`badge px-2 py-0.5 rounded-pill small ${
+                            isSettledAdvance
+                              ? 'bg-success-subtle text-success border border-success-subtle'
+                              : isReimbursed
+                              ? 'bg-primary-subtle text-primary border border-primary-subtle'
+                              : 'bg-warning-subtle text-warning-emphasis border border-warning-subtle'
+                          }`}
+                        >
+                          {isSettledAdvance
+                            ? 'Adjusted Advance'
+                            : isReimbursed
+                            ? 'Reimbursed'
+                            : 'Unsettled'}
+                        </span>
+                      </td>
+
+                      {/* Actions */}
+                      <td className="text-end text-nowrap">
+                        <div className="d-inline-flex align-items-center gap-1">
+                          {/* Claim Details button (Phase 2A) */}
+                          <button
+                            type="button"
+                            className="erp-btn erp-btn-secondary erp-btn-sm p-1.5 px-2"
+                            onClick={() => setDetailsModal({ show: true, claim })}
+                            title="View Full Claim Details & Entries"
+                          >
+                            <FileText size={13} />
+                            <span>Details</span>
+                          </button>
+
+                          {/* Approval / Settlement Actions for Reviewers */}
+                          {activeTab === 'team' && canApprove && (
+                            <>
+                              {claim.status === 'Pending' && (
+                                <>
+                                  <button
+                                    type="button"
+                                    className="erp-btn erp-btn-success erp-btn-sm p-1.5"
+                                    onClick={() => handleApprove(claim._id)}
+                                    disabled={processingId === claim._id}
+                                    title="Approve Claim (Settlement Pending)"
+                                  >
+                                    <Check size={14} />
+                                    <span>Approve</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="erp-btn erp-btn-danger-outline erp-btn-sm p-1.5"
+                                    onClick={() => setRejectModal({ show: true, claimId: claim._id, reason: '' })}
+                                    disabled={processingId === claim._id}
+                                    title="Reject Claim"
+                                  >
+                                    <X size={14} />
+                                  </button>
+                                </>
+                              )}
+
+                              {claim.status === 'Approved' && claim.settlementStatus === 'UNSETTLED' && (
+                                <button
+                                  type="button"
+                                  className="erp-btn erp-btn-primary erp-btn-sm p-1.5 px-2.5 d-inline-flex align-items-center gap-1"
+                                  onClick={() => setSettleModal({ show: true, claim })}
+                                  title="Process Settlement (Advance Adjustment or Reimbursement)"
+                                >
+                                  <CreditCard size={13} />
+                                  <span>Settle</span>
+                                </button>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="p-3 border-top">
+            <Pagination pagination={pagination} onPageChange={(p) => setPage(p)} />
+          </div>
+        </div>
+      )}
+
+      {/* ── Multi-Receipt Viewer Modal ── */}
+      {receiptModal.show && receiptModal.receipts.length > 0 && (() => {
+        const activeReceipt = receiptModal.receipts[receiptModal.currentIndex] || receiptModal.receipts[0];
+        const isPdf = activeReceipt?.url && (/\.pdf($|\?)/i.test(activeReceipt.url) || activeReceipt.url.includes('pdf'));
+        const totalReceipts = receiptModal.receipts.length;
+
+        return (
+          <Modal
+            show={receiptModal.show}
+            title={
+              totalReceipts > 1
+                ? `Attached Expense Receipts (${receiptModal.currentIndex + 1} of ${totalReceipts})`
+                : 'Attached Expense Receipt'
+            }
+            onClose={() => setReceiptModal({ show: false, receipts: [], currentIndex: 0, claimId: '' })}
+            size={totalReceipts > 1 ? 'lg' : 'md'}
+            icon={Receipt}
+          >
+            <div>
+              {/* Top toolbar */}
+              <div className="d-flex align-items-center justify-content-between p-2 mb-3 rounded-2 bg-light border">
+                <div className="d-flex align-items-center gap-2">
+                  <span className="badge bg-primary text-white px-2 py-1 rounded-pill small">
+                    {activeReceipt.label}
+                  </span>
+                  <span className="badge bg-secondary-subtle text-secondary px-2 py-1 rounded-pill small">
+                    {activeReceipt.itemCategory}
+                  </span>
+                  {activeReceipt.itemAmount > 0 && (
+                    <span className="fw-semibold text-dark small font-monospace">
+                      ₹{activeReceipt.itemAmount.toLocaleString()}
+                    </span>
+                  )}
+                </div>
+
+                <div className="d-flex align-items-center gap-1.5">
+                  <button
+                    type="button"
+                    className="erp-btn erp-btn-secondary erp-btn-sm p-1 px-2 d-inline-flex align-items-center gap-1"
+                    onClick={() => handleDownloadReceipt(activeReceipt, receiptModal.currentIndex)}
+                    title="Download / Save this receipt"
+                  >
+                    <Download size={13} />
+                    <span>Save</span>
+                  </button>
+                  <a
+                    href={activeReceipt.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="erp-btn erp-btn-secondary erp-btn-sm p-1 px-2 d-inline-flex align-items-center gap-1 text-decoration-none"
+                    title="Open original file in new tab"
+                  >
+                    <ExternalLink size={13} />
+                    <span>Open</span>
+                  </a>
+                </div>
+              </div>
+
+              {/* Viewer container with left/right navigation */}
+              <div
+                className="position-relative d-flex align-items-center justify-content-center p-3 rounded-3"
+                style={{
+                  backgroundColor: '#0F172A',
+                  minHeight: '380px',
+                  maxHeight: '68vh',
+                  overflow: 'hidden',
+                }}
+              >
+                {/* Previous button */}
+                {totalReceipts > 1 && (
+                  <button
+                    type="button"
+                    className="btn btn-dark position-absolute start-0 ms-2 rounded-circle d-flex align-items-center justify-content-center shadow-lg"
+                    style={{
+                      width: '40px',
+                      height: '40px',
+                      zIndex: 10,
+                      backgroundColor: 'rgba(15, 23, 42, 0.85)',
+                      border: '1px solid rgba(255, 255, 255, 0.25)',
+                    }}
+                    onClick={() =>
+                      setReceiptModal((prev) => ({
+                        ...prev,
+                        currentIndex: (prev.currentIndex - 1 + totalReceipts) % totalReceipts,
+                      }))
+                    }
+                    title="Previous receipt (Left Arrow)"
+                  >
+                    <ChevronLeft size={22} color="#FFFFFF" />
+                  </button>
+                )}
+
+                {/* Media (Image or PDF) */}
+                {isPdf ? (
+                  <iframe
+                    src={activeReceipt.url}
+                    title={`Receipt ${receiptModal.currentIndex + 1}`}
+                    className="w-100 rounded border-0"
+                    style={{ height: '62vh' }}
+                  />
+                ) : (
+                  <img
+                    src={activeReceipt.url}
+                    alt={`Receipt ${receiptModal.currentIndex + 1}`}
+                    className="img-fluid rounded-2 shadow"
+                    style={{
+                      maxHeight: '62vh',
+                      maxWidth: '100%',
+                      objectFit: 'contain',
+                    }}
+                  />
+                )}
+
+                {/* Next button */}
+                {totalReceipts > 1 && (
+                  <button
+                    type="button"
+                    className="btn btn-dark position-absolute end-0 me-2 rounded-circle d-flex align-items-center justify-content-center shadow-lg"
+                    style={{
+                      width: '40px',
+                      height: '40px',
+                      zIndex: 10,
+                      backgroundColor: 'rgba(15, 23, 42, 0.85)',
+                      border: '1px solid rgba(255, 255, 255, 0.25)',
+                    }}
+                    onClick={() =>
+                      setReceiptModal((prev) => ({
+                        ...prev,
+                        currentIndex: (prev.currentIndex + 1) % totalReceipts,
+                      }))
+                    }
+                    title="Next receipt (Right Arrow)"
+                  >
+                    <ChevronRight size={22} color="#FFFFFF" />
+                  </button>
+                )}
+              </div>
+
+              {/* Bottom thumbnail gallery strip */}
+              {totalReceipts > 1 && (
+                <div className="d-flex align-items-center justify-content-center gap-2 mt-3 pt-2 border-top overflow-auto py-1">
+                  {receiptModal.receipts.map((rcpt, idx) => {
+                    const isActive = idx === receiptModal.currentIndex;
+                    const isRcptPdf = /\.pdf($|\?)/i.test(rcpt.url);
+
+                    return (
+                      <button
+                        key={idx}
+                        type="button"
+                        className="p-1 rounded-2 border position-relative"
+                        style={{
+                          width: '74px',
+                          height: '58px',
+                          cursor: 'pointer',
+                          backgroundColor: '#F8FAFC',
+                          borderColor: isActive ? 'var(--erp-primary, #087FF5)' : 'var(--erp-border, #E2E8F0)',
+                          boxShadow: isActive ? '0 0 0 2.5px rgba(8, 127, 245, 0.45)' : 'none',
+                          opacity: isActive ? 1 : 0.6,
+                          transform: isActive ? 'scale(1.05)' : 'scale(1)',
+                          transition: 'all 0.15s ease',
+                        }}
+                        onClick={() => setReceiptModal((prev) => ({ ...prev, currentIndex: idx }))}
+                        title={`Select Bill #${idx + 1}`}
+                      >
+                        {isRcptPdf ? (
+                          <div className="w-100 h-100 d-flex flex-column align-items-center justify-content-center text-danger">
+                            <FileText size={18} />
+                            <span style={{ fontSize: '9px', fontWeight: 600 }}>PDF</span>
+                          </div>
+                        ) : (
+                          <img
+                            src={rcpt.url}
+                            alt={`Thumb ${idx + 1}`}
+                            style={{
+                              width: '100%',
+                              height: '100%',
+                              objectFit: 'cover',
+                              borderRadius: '4px',
+                            }}
+                          />
+                        )}
+                        <span
+                          className="position-absolute top-0 start-0 bg-dark text-white rounded-bottom px-1"
+                          style={{ fontSize: '9px', fontWeight: 700, opacity: 0.85 }}
+                        >
+                          #{idx + 1}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </Modal>
-        )}
+        );
+      })()}
 
-        {/* Rejection Reason Modal */}
-        <Modal 
-          show={rejectModal.show} 
-          title="Reject Expense Claim" 
+      {/* ── Reject Reason Modal ── */}
+      {rejectModal.show && (
+        <Modal
+          show={rejectModal.show}
+          title="Reject Expense Claim"
           onClose={() => setRejectModal({ show: false, claimId: '', reason: '' })}
+          size="md"
+          icon={XCircle}
         >
-          <form onSubmit={handleReject} className="p-2">
+          <form onSubmit={handleRejectSubmit}>
             <div className="mb-3">
-              <label className="form-label fw-bold small text-muted mb-2" style={{ fontSize: '0.78rem' }}>
-                Reason for Rejection *
-              </label>
+              <label className="erp-label">Rejection Remarks *</label>
               <textarea
-                className="form-control shadow-none erp-input-focus"
-                rows="3"
+                className="erp-textarea"
+                rows={3}
+                placeholder="State the reason for rejecting this claim (e.g. Missing tax invoice, unauthorized travel expense)..."
                 value={rejectModal.reason}
                 onChange={(e) => setRejectModal({ ...rejectModal, reason: e.target.value })}
                 required
-                placeholder="State the reason (e.g. Missing receipts, over-limit expense)..."
-                style={{ borderRadius: '8px', borderColor: ERP_COLORS.border, padding: '10px 14px', fontSize: '0.82rem' }}
               />
             </div>
-            <div className="d-flex justify-content-end gap-2.5 pt-3 border-top">
-              <button 
-                type="button" 
-                className="btn btn-light fw-semibold px-3.5 py-2 erp-btn-hover" 
+
+            <div className="d-flex justify-content-end gap-2 mt-4 pt-3 border-top">
+              <button
+                type="button"
+                className="erp-btn erp-btn-secondary"
                 onClick={() => setRejectModal({ show: false, claimId: '', reason: '' })}
-                style={{ borderRadius: '8px', border: `1px solid ${ERP_COLORS.silver}`, fontSize: '0.80rem' }}
               >
                 Cancel
               </button>
-              <button 
-                type="submit" 
-                className="btn text-white fw-bold px-4 py-2 erp-btn-hover" 
+              <button
+                type="submit"
+                className="erp-btn erp-btn-danger"
                 disabled={processingId === rejectModal.claimId}
-                style={{ borderRadius: '8px', backgroundColor: ERP_COLORS.error, border: 'none', fontSize: '0.80rem' }}
               >
                 Confirm Rejection
               </button>
             </div>
           </form>
         </Modal>
+      )}
 
-      </div>
-    </>
+      {/* ── Individual Claim Details Modal (Phase 2A) ── */}
+      {detailsModal.show && (
+        <ClaimDetailsModal
+          show={detailsModal.show}
+          claim={detailsModal.claim}
+          onClose={() => setDetailsModal({ show: false, claim: null })}
+          canApprove={canApprove}
+          onSettle={(claimToSettle) => {
+            setDetailsModal({ show: false, claim: null });
+            setSettleModal({ show: true, claim: claimToSettle });
+          }}
+        />
+      )}
+
+      {/* ── Financial Settlement Modal (Phase 5) ── */}
+      {settleModal.show && (
+        <ClaimSettlementModal
+          show={settleModal.show}
+          claim={settleModal.claim}
+          onClose={() => setSettleModal({ show: false, claim: null })}
+          onSuccess={fetchData}
+        />
+      )}
+
+      {/* ── Employee Statement & Ledger Modal (Phase 2B & Phase 3C) ── */}
+      {statementModal.show && (
+        <EmployeeStatementModal
+          show={statementModal.show}
+          userId={statementModal.userId}
+          onClose={() => setStatementModal({ show: false, userId: '' })}
+        />
+      )}
+    </div>
   );
 };
 

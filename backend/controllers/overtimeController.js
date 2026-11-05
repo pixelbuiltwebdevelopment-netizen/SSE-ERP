@@ -2,7 +2,6 @@ const OvertimeRequest = require('../models/OvertimeRequest');
 const Attendance = require('../models/Attendance');
 const ApiError = require('../utils/ApiError');
 const { logActivity } = require('../services/auditService');
-const { sendNotification } = require('../services/notificationService');
 
 /**
  * @desc Get overtime requests (Admin/HR scoped or own)
@@ -134,14 +133,6 @@ const approveOvertime = async (req, res, next) => {
       });
     }
 
-    await sendNotification({
-      userId: request.userId._id,
-      title: 'Overtime Request Approved',
-      message: `Your overtime request for ${request.date} was approved for ${minutesToApprove} minutes (${(minutesToApprove / 60).toFixed(1)} hrs).`,
-      type: 'OVERTIME_APPROVED',
-      referenceId: request._id,
-    });
-
     await logActivity({
       userId: req.user._id,
       userName: req.user.name,
@@ -187,14 +178,6 @@ const rejectOvertime = async (req, res, next) => {
     request.approvedBy = req.user._id;
     request.reviewedAt = new Date();
     await request.save();
-
-    await sendNotification({
-      userId: request.userId._id,
-      title: 'Overtime Request Rejected',
-      message: `Your overtime request for ${request.date} was rejected. Reason: ${rejectionReason}`,
-      type: 'OVERTIME_REJECTED',
-      referenceId: request._id,
-    });
 
     await logActivity({
       userId: req.user._id,

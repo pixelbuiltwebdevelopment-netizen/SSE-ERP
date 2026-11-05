@@ -1,10 +1,20 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
+import {
+  ShieldCheck,
+  ChevronDown,
+  ChevronUp,
+  Search,
+  CheckCircle2,
+  Lock,
+  Layers,
+} from 'lucide-react';
 import { SCOPES } from '../../utils/constants';
 
 const PermissionMatrix = ({ modules, permissions, onChange }) => {
   const [expandedModules, setExpandedModules] = useState({});
+  const [searchTerm, setSearchTerm] = useState('');
 
-  // Get module level permission state (is it toggled ON at all?)
+  // Get module level permission state
   const getModulePermission = (moduleKey) => {
     return permissions.find(
       (p) => p.module && p.module.toLowerCase() === moduleKey.toLowerCase()
@@ -14,14 +24,13 @@ const PermissionMatrix = ({ modules, permissions, onChange }) => {
   const isModuleEnabled = (moduleKey) => {
     const modPerm = getModulePermission(moduleKey);
     if (!modPerm || !modPerm.actions) return false;
-    // Considered enabled if ANY action is allowed
-    return Object.values(modPerm.actions).some(action => action.allowed);
+    return Object.values(modPerm.actions).some((action) => action.allowed);
   };
 
   const toggleModuleExpansion = (moduleKey) => {
-    setExpandedModules(prev => ({
+    setExpandedModules((prev) => ({
       ...prev,
-      [moduleKey]: !prev[moduleKey]
+      [moduleKey]: !prev[moduleKey],
     }));
   };
 
@@ -33,26 +42,24 @@ const PermissionMatrix = ({ modules, permissions, onChange }) => {
     );
 
     if (isCurrentlyEnabled) {
-      // Turn OFF: disable all actions
       if (modPermIndex >= 0) {
-        Object.keys(updated[modPermIndex].actions).forEach(key => {
+        Object.keys(updated[modPermIndex].actions).forEach((key) => {
           updated[modPermIndex].actions[key].allowed = false;
         });
       }
     } else {
-      // Turn ON: Enable default 'view' action or first action
       if (modPermIndex === -1) {
         updated.push({ module: mod.key, actions: {} });
         modPermIndex = updated.length - 1;
       }
-      
-      const defaultAction = mod.availableActions.find(a => a.key === 'view') || mod.availableActions[0];
+
+      const defaultAction =
+        mod.availableActions.find((a) => a.key === 'view') || mod.availableActions[0];
       if (defaultAction) {
         updated[modPermIndex].actions[defaultAction.key] = { allowed: true, scope: 'OWN' };
       }
-      
-      // Auto expand when enabled
-      setExpandedModules(prev => ({ ...prev, [mod.key]: true }));
+
+      setExpandedModules((prev) => ({ ...prev, [mod.key]: true }));
     }
 
     onChange(updated);
@@ -110,84 +117,179 @@ const PermissionMatrix = ({ modules, permissions, onChange }) => {
     onChange(updated);
   };
 
+  // Filter modules by search term
+  const filteredModules = useMemo(() => {
+    if (!searchTerm.trim()) return modules;
+    const q = searchTerm.toLowerCase();
+    return modules.filter(
+      (m) => m.name.toLowerCase().includes(q) || m.key.toLowerCase().includes(q)
+    );
+  }, [modules, searchTerm]);
+
   return (
     <div className="d-flex flex-column gap-3">
-      {modules.map((mod) => {
+      {/* Search Filter for Matrix */}
+      <div className="erp-search-group">
+        <span className="erp-search-icon">
+          <Search size={16} />
+        </span>
+        <input
+          type="text"
+          className="erp-input erp-search-input"
+          placeholder="Filter modules in permission matrix..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+        />
+      </div>
+
+      {filteredModules.map((mod) => {
         const enabled = isModuleEnabled(mod.key);
-        const expanded = expandedModules[mod.key];
+        const expanded = expandedModules[mod.key] ?? enabled;
         const actions = mod.availableActions || [];
 
+        const activeCount = actions.filter(
+          (a) => getActionState(mod.key, a.key).allowed
+        ).length;
+
         return (
-          <div key={mod.key} className={`card border ${enabled ? 'border-primary shadow-sm' : 'border-secondary-subtle'}`}>
-            <div 
-              className={`card-header d-flex justify-content-between align-items-center cursor-pointer ${enabled ? 'bg-primary-subtle' : 'bg-light'}`}
+          <div
+            key={mod.key}
+            className={`erp-card overflow-hidden transition-normal ${
+              enabled ? 'border-primary' : ''
+            }`}
+          >
+            {/* Module Accordion Header */}
+            <div
+              className="d-flex justify-content-between align-items-center p-3 cursor-pointer user-select-none"
+              style={{
+                backgroundColor: enabled ? 'var(--erp-primary-light)' : 'var(--erp-surface-subtle)',
+                borderBottom: expanded ? '1px solid var(--erp-border)' : 'none',
+              }}
               onClick={() => toggleModuleExpansion(mod.key)}
             >
               <div className="d-flex align-items-center gap-3">
-                <div className="form-check form-switch m-0" onClick={(e) => e.stopPropagation()}>
+                <div
+                  className="form-check form-switch m-0"
+                  onClick={(e) => e.stopPropagation()}
+                >
                   <input
-                    className="form-check-input cursor-pointer fs-5"
+                    className="form-check-input cursor-pointer"
                     type="checkbox"
                     checked={enabled}
                     onChange={() => handleToggleModule(mod, enabled)}
+                    style={{ width: '2.5rem', height: '1.35rem' }}
                   />
                 </div>
+
                 <div>
-                  <h6 className="mb-0 fw-bold">{mod.name}</h6>
-                  <small className="text-muted" style={{fontSize: '12px'}}>{mod.description}</small>
+                  <div className="d-flex align-items-center gap-2">
+                    <span className="fw-bold" style={{ color: 'var(--erp-text-main)', fontSize: '0.95rem' }}>
+                      {mod.name}
+                    </span>
+                    <span
+                      className="font-monospace small px-2 py-0.5 rounded"
+                      style={{
+                        backgroundColor: 'rgba(15, 23, 42, 0.06)',
+                        fontSize: '0.7rem',
+                        color: 'var(--erp-text-secondary)',
+                      }}
+                    >
+                      {mod.key}
+                    </span>
+                    {enabled && (
+                      <span className="erp-badge erp-badge-success" style={{ fontSize: '0.675rem' }}>
+                        {activeCount} / {actions.length} allowed
+                      </span>
+                    )}
+                  </div>
+                  <small className="text-muted d-block" style={{ fontSize: '0.775rem' }}>
+                    {mod.description}
+                  </small>
                 </div>
               </div>
-              <div>
-                <i className={`bi ${expanded ? 'bi-chevron-up' : 'bi-chevron-down'} text-secondary`}></i>
+
+              <div className="text-muted p-1">
+                {expanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
               </div>
             </div>
 
+            {/* Actions Grid */}
             {expanded && (
-              <div className="card-body bg-white py-4">
+              <div className="p-3 p-md-4 bg-white erp-fade-in">
                 {!enabled && (
-                  <div className="alert alert-warning py-2 mb-4" style={{fontSize: '14px'}}>
-                    <i className="bi bi-info-circle me-2"></i> Toggle the module ON above to enable these permissions.
+                  <div className="p-2.5 rounded-3 mb-3 bg-light text-muted small d-flex align-items-center gap-2">
+                    <Lock size={15} />
+                    <span>Module is currently disabled. Toggle switch ON to grant rights.</span>
                   </div>
                 )}
-                
-                <div className="row g-4">
-                  {actions.map(action => {
+
+                <div className="row g-3">
+                  {actions.map((action) => {
                     const state = getActionState(mod.key, action.key);
-                    
+
                     return (
-                      <div key={action.key} className="col-md-4 col-sm-6">
-                        <div className={`p-3 border rounded h-100 ${state.allowed ? 'border-success bg-success-subtle bg-opacity-10' : 'border-light bg-light'}`}>
+                      <div key={action.key} className="col-12 col-md-6 col-xl-4">
+                        <div
+                          className="p-3 rounded-3 border h-100 transition-fast"
+                          style={{
+                            backgroundColor: state.allowed
+                              ? 'var(--erp-surface)'
+                              : 'var(--erp-surface-subtle)',
+                            borderColor: state.allowed ? 'var(--erp-primary)' : 'var(--erp-border)',
+                            boxShadow: state.allowed ? 'var(--erp-shadow-xs)' : 'none',
+                          }}
+                        >
                           <div className="d-flex justify-content-between align-items-start mb-2">
-                            <span className="fw-semibold" style={{fontSize: '14px'}}>{action.name}</span>
+                            <div>
+                              <span
+                                className="fw-semibold small d-block"
+                                style={{ color: 'var(--erp-text-main)' }}
+                              >
+                                {action.name}
+                              </span>
+                              <span className="font-monospace text-muted" style={{ fontSize: '0.7rem' }}>
+                                {action.key}
+                              </span>
+                            </div>
+
                             <div className="form-check form-switch m-0">
                               <input
                                 className="form-check-input cursor-pointer"
                                 type="checkbox"
                                 checked={state.allowed}
                                 disabled={!enabled}
-                                onChange={() => handleToggleAction(mod.key, action.key, state.allowed)}
+                                onChange={() =>
+                                  handleToggleAction(mod.key, action.key, state.allowed)
+                                }
                               />
                             </div>
                           </div>
-                          
-                          {action.requiresScope && (
-                            <div className={`mt-3 ${!state.allowed ? 'opacity-25 pointer-events-none' : ''}`}>
-                              <label className="text-muted small fw-medium mb-1 d-block" style={{fontSize: '11px'}}>DATA SCOPE</label>
+
+                          {action.requiresScope ? (
+                            <div className={`mt-2 ${!state.allowed ? 'opacity-40 pointer-events-none' : ''}`}>
+                              <label className="erp-label" style={{ fontSize: '0.675rem' }}>
+                                Data Scope Level
+                              </label>
                               <select
-                                className="form-select form-select-sm"
+                                className="erp-select py-1 px-2"
+                                style={{ fontSize: '0.78rem' }}
                                 value={state.scope}
                                 disabled={!state.allowed || !enabled}
-                                onChange={(e) => handleScopeChange(mod.key, action.key, e.target.value)}
+                                onChange={(e) =>
+                                  handleScopeChange(mod.key, action.key, e.target.value)
+                                }
                               >
                                 {SCOPES.map((sc) => (
-                                  <option key={sc} value={sc}>{sc}</option>
+                                  <option key={sc} value={sc}>
+                                    {sc} {sc === 'ALL' ? '(Global)' : sc === 'OWN' ? '(Self only)' : ''}
+                                  </option>
                                 ))}
                               </select>
                             </div>
-                          )}
-                          {!action.requiresScope && (
-                            <div className="mt-3 text-muted" style={{fontSize: '11px'}}>
-                              <i className="bi bi-check2-circle me-1"></i> Global Action (No scope)
+                          ) : (
+                            <div className="mt-2 text-muted" style={{ fontSize: '0.72rem' }}>
+                              <CheckCircle2 size={12} className="text-success me-1 inline-block" />
+                              Global action (No data scope needed)
                             </div>
                           )}
                         </div>

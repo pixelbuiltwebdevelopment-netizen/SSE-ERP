@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { expenseApi } from '../../api/expenseApi';
+import BackButton from '../../components/common/BackButton';
 
 // Official ERP Design System Palette
 const ERP_COLORS = {
@@ -273,15 +274,7 @@ const ExpenseSubmitPage = () => {
             }}
           >
             <div className="d-flex align-items-center gap-3">
-              <button
-                type="button"
-                className="btn btn-outline-secondary rounded-circle d-flex align-items-center justify-content-center p-0 flex-shrink-0"
-                style={{ width: '40px', height: '40px', fontSize: '1.4rem', fontWeight: 700 }}
-                onClick={() => navigate('/expenses')}
-                title="Back to Expenses"
-              >
-                ‹
-              </button>
+              <BackButton fallback="/expenses" tooltip="Back to Expenses" />
 
               <div>
                 <div className="d-flex align-items-center gap-2 mb-1.5">

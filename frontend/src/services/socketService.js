@@ -1,7 +1,11 @@
 import { io } from 'socket.io-client';
 import { getAccessToken } from '../api/axiosClient';
 
-const SOCKET_URL = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:5000';
+// ✅ Checks both names and cleans '/api' properly:
+const apiUrl = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL;
+const SOCKET_URL = 
+  import.meta.env.VITE_SOCKET_URL || 
+  (apiUrl ? apiUrl.replace(/\/api\/?$/, '') : 'http://127.0.0.1:5000');
 
 class SocketService {
   constructor() {
@@ -13,8 +17,9 @@ class SocketService {
       const token = getAccessToken();
       this.socket = io(SOCKET_URL, {
         withCredentials: true,
+        transports: ['websocket', 'polling'], // Faster & more reliable on Render
         auth: {
-          token
+          token,
         },
         reconnection: true,
         reconnectionAttempts: 5,

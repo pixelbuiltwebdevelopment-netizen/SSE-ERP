@@ -28,13 +28,15 @@ const getActivePolicy = async () => {
       gracePeriodMinutes: 15,
       halfDayThresholdHours: 4.0,
       fullDayThresholdHours: 8.0,
-      unpaidBreakMinutes: 60,
-      paidBreakMinutes: 15,
+      unpaidBreakMinutes: 0,
+      paidBreakMinutes: 0,
       earlyDepartureThresholdMinutes: 30,
       overtimeEnabled: true,
       overtimeRequiresApproval: true,
       overtimeMinMinutes: 30,
       overtimeMaxHoursDaily: 4.0,
+      autoPunchOutEnabled: true,
+      autoPunchOutTime: '18:00',
       autoPunchOutMode: 'SHIFT_END',
       autoPunchOutMaxHours: 9.0,
       weeklyHolidays: ['Sunday'],
@@ -44,40 +46,28 @@ const getActivePolicy = async () => {
 };
 
 /**
- * Resolve effective shift for an employee
+ * Resolve standard company-wide shift for all employees
+ * Only ONE company-wide shift applies across the organization.
  */
 const resolveShift = async (user) => {
-  let shift = null;
-  if (user && user.shiftId) {
-    shift = await Shift.findById(user.shiftId);
-  }
-  if (!shift && user && user.departmentId) {
-    shift = await Shift.findOne({ departmentIds: user.departmentId, isActive: true });
-  }
-  if (!shift) {
-    shift = await Shift.findOne({ isDefault: true, isActive: true });
-  }
-  if (!shift) {
-    shift = await Shift.findOne({ isActive: true });
-  }
-  if (!shift) {
-    // Fallback standard shift
-    shift = {
-      _id: null,
-      name: 'General Shift',
-      code: 'GEN',
-      startTime: '09:00',
-      endTime: '18:00',
-      requiredHours: 8.0,
-      gracePeriodMinutes: 15,
-      halfDayThresholdHours: 4.0,
-      fullDayThresholdHours: 8.0,
-      breakMinutes: 60,
-      unpaidBreakMinutes: 60,
-      workDays: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
-    };
-  }
-  return shift;
+  const policy = await getActivePolicy();
+  return {
+    _id: null,
+    name: 'Standard Company Shift',
+    code: 'STD',
+    startTime: policy.standardStartTime || '09:00',
+    endTime: policy.standardEndTime || '18:00',
+    requiredHours: policy.requiredWorkHours || 8.0,
+    gracePeriodMinutes: policy.gracePeriodMinutes ?? 15,
+    earlyDepartureThresholdMinutes: policy.earlyDepartureThresholdMinutes ?? 30,
+    halfDayThresholdHours: policy.halfDayThresholdHours || 4.0,
+    fullDayThresholdHours: policy.fullDayThresholdHours || 8.0,
+    unpaidBreakMinutes: 0,
+    breakMinutes: 0,
+    workDays: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
+    isDefault: true,
+    isActive: true,
+  };
 };
 
 /**
@@ -115,16 +105,8 @@ const calculateAttendanceSummary = ({
   const rawDiffMs = Math.max(0, punchOutDate - punchInDate);
   const rawWorkedMinutes = Math.floor(rawDiffMs / (1000 * 60));
 
-  // Break deduction
-  const unpaidBreak = shift.unpaidBreakMinutes !== undefined 
-    ? shift.unpaidBreakMinutes 
-    : (policy.unpaidBreakMinutes || 0);
-
-  // Apply unpaid break deduction only if worked duration is longer than break
-  const effectiveWorkedMinutes = rawWorkedMinutes > unpaidBreak 
-    ? rawWorkedMinutes - unpaidBreak 
-    : rawWorkedMinutes;
-
+  // No unpaid lunch/break deduction - full punch duration is counted
+  const effectiveWorkedMinutes = rawWorkedMinutes;
   const workingHours = parseFloat((effectiveWorkedMinutes / 60).toFixed(2));
 
   // Late calculation
@@ -169,6 +151,7 @@ const calculateAttendanceSummary = ({
 
   if (workingHours < halfDayThresholdHours) {
     attendanceStatus = 'Incomplete';
+    flags.push('Short-Hours');
     flags.push('Incomplete');
   } else if (workingHours < fullDayThresholdHours) {
     attendanceStatus = 'Half-Day';
@@ -192,7 +175,7 @@ const calculateAttendanceSummary = ({
     actualWorkedMinutes: rawWorkedMinutes,
     effectiveWorkedMinutes,
     workingHours,
-    unpaidBreakMinutes: unpaidBreak,
+    unpaidBreakMinutes: 0,
     lateMinutes,
     earlyDepartureMinutes,
     overtimeMinutes,

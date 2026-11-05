@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, useEffect } from 'react';
 
 const THEME = {
   navy: '#0F172A',
@@ -41,12 +41,24 @@ const AttendancePeriodSelector = ({
     }
   };
 
-  const handleWheel = (e) => {
-    if (scrollRef.current && e.deltaY !== 0) {
-      e.preventDefault();
-      scrollRef.current.scrollBy({ left: e.deltaY, behavior: 'smooth' });
-    }
-  };
+  // ✅ Non-passive wheel event listener to convert vertical wheel to horizontal scroll safely
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+
+    const onWheel = (e) => {
+      if (e.deltaY !== 0) {
+        e.preventDefault();
+        el.scrollBy({ left: e.deltaY, behavior: 'smooth' });
+      }
+    };
+
+    el.addEventListener('wheel', onWheel, { passive: false });
+
+    return () => {
+      el.removeEventListener('wheel', onWheel);
+    };
+  }, []);
 
   return (
     <div className="mb-3">
@@ -117,7 +129,6 @@ const AttendancePeriodSelector = ({
       {/* Horizontal Scroll Pill Bar */}
       <div
         ref={scrollRef}
-        onWheel={handleWheel}
         className="d-flex align-items-center gap-2 pb-1"
         style={{
           overflowX: 'auto',

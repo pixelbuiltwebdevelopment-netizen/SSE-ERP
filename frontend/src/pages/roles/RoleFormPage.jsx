@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, Link } from 'react-router-dom';
+import { Shield, ArrowLeft, Save, AlertCircle } from 'lucide-react';
 import { roleApi } from '../../api/roleApi';
 import { moduleApi } from '../../api/moduleApi';
 import PermissionMatrix from '../../components/permissions/PermissionMatrix';
-import LoadingSpinner from '../../components/common/LoadingSpinner';
+import PageHeader from '../../components/common/PageHeader';
+import { PageSkeleton } from '../../components/common/Skeleton';
 
 const RoleFormPage = () => {
   const { id } = useParams();
@@ -96,331 +98,132 @@ const RoleFormPage = () => {
   };
 
   if (loading) {
-    return <LoadingSpinner text="LOADING" subtext="Loading permission matrix configuration..." />;
+    return <PageSkeleton />;
   }
 
   return (
-    <div className="erp-page-wrapper">
-      <style>{`
-        /* Direct Bootstrap Icons guarantee */
-        @import url("https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css");
-
-        html, body {
-          overflow-x: hidden !important;
-          max-width: 100vw !important;
-          margin: 0;
-          padding: 0;
-        }
-
-        .erp-page-wrapper {
-          background-color: #F8FAFC;
-          min-height: 100vh;
-          width: 100%;
-          padding: 16px 14px 48px;
-          box-sizing: border-box;
-          color: #1E293B;
-        }
-        @media (min-width: 768px) {
-          .erp-page-wrapper {
-            padding: 32px 36px 64px;
-          }
-        }
-
-        .erp-container-inner {
-          max-width: 1440px;
-          margin: 0 auto;
-        }
-
-        /* ── SECTION: Header Card ── */
-        .erp-header-banner {
-          background: #FFFFFF;
-          border: 1px solid #E2E8F0;
-          border-radius: 14px;
-          padding: 18px 20px;
-          margin-bottom: 24px;
-          box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
-        }
-        @media (min-width: 768px) {
-          .erp-header-banner {
-            padding: 24px 28px;
-          }
-        }
-
-        /* ── SECTION: Form Section Card ── */
-        .erp-form-card {
-          background: #FFFFFF;
-          border: 1px solid #E2E8F0;
-          border-radius: 14px;
-          box-shadow: 0 1px 4px rgba(15, 23, 42, 0.04);
-          margin-bottom: 24px;
-          overflow: hidden;
-        }
-
-        .erp-card-header {
-          background-color: #0F172A;
-          color: #FFFFFF;
-          padding: 14px 20px;
-          font-weight: 600;
-          font-size: 0.90rem;
-          display: flex;
-          align-items: center;
-          gap: 10px;
-        }
-
-        .erp-card-body {
-          padding: 20px;
-        }
-        @media (min-width: 768px) {
-          .erp-card-body {
-            padding: 26px 28px;
-          }
-        }
-
-        .erp-input-field {
-          border-radius: 8px;
-          border: 1px solid #CBD5E1;
-          font-size: 0.88rem;
-          padding: 10px 14px;
-          width: 100%;
-          transition: border-color 0.15s ease, box-shadow 0.15s ease;
-        }
-        .erp-input-field:focus {
-          border-color: #0284C7;
-          box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.15);
-          outline: none;
-        }
-        .erp-input-field:disabled {
-          background-color: #F1F5F9;
-          cursor: not-allowed;
-          color: #64748B;
-        }
-
-        .erp-form-label {
-          font-size: 0.74rem;
-          font-weight: 700;
-          color: #475569;
-          text-transform: uppercase;
-          letter-spacing: 0.5px;
-          margin-bottom: 6px;
-          display: block;
-        }
-
-        /* Buttons */
-        .btn-erp-brand {
-          background: #1E5385;
-          border: 1px solid #1E5385;
-          color: #FFFFFF !important;
-          font-weight: 600;
-          font-size: 0.88rem;
-          border-radius: 8px;
-          padding: 10px 22px;
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          transition: all 0.2s ease;
-        }
-        .btn-erp-brand:hover:not(:disabled) {
-          background: #164069;
-          box-shadow: 0 4px 12px rgba(30, 83, 133, 0.25);
-        }
-        .btn-erp-brand:disabled {
-          opacity: 0.7;
-          cursor: not-allowed;
-        }
-
-        .btn-erp-outline {
-          border: 1px solid #CBD5E1;
-          background: #FFFFFF;
-          color: #475569;
-          font-weight: 600;
-          font-size: 0.88rem;
-          border-radius: 8px;
-          padding: 10px 20px;
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          transition: all 0.15s ease;
-        }
-        .btn-erp-outline:hover {
-          background: #F8FAFC;
-          color: #1E293B;
-          border-color: #94A3B8;
-        }
-
-        /* Mobile specific layout tweaks (< 768px) */
-        @media (max-width: 767.98px) {
-          .erp-header-banner {
-            flex-direction: column !important;
-            align-items: stretch !important;
-            gap: 16px !important;
-          }
-          .mobile-footer-actions {
-            flex-direction: column-reverse !important;
-            gap: 10px !important;
-          }
-          .mobile-footer-actions button {
-            width: 100% !important;
-            min-height: 44px;
-          }
-        }
-      `}</style>
-
-      <div className="erp-container-inner">
-
-        {/* ── SECTION 1: Top Navigation Banner ── */}
-        <div className="erp-header-banner d-flex justify-content-between align-items-start align-items-md-center">
-          <div>
-            <div className="d-flex align-items-center flex-wrap gap-2 mb-1.5">
-              <h3 className="fw-bold mb-0 text-dark fs-5">
-                {isEditMode ? `Edit Role: ${name || 'Role Matrix'}` : 'Create Dynamic ERP Role'}
-              </h3>
-              <span
-                className="badge rounded-pill small"
-                style={{
-                  backgroundColor: isEditMode ? '#E0F2FE' : '#DCFCE7',
-                  color: isEditMode ? '#0369A1' : '#15803D',
-                  fontWeight: 600,
-                  padding: '5px 10px',
-                }}
-              >
-                {isEditMode ? 'Edit Mode' : 'New Role'}
-              </span>
-            </div>
-            <p className="text-muted small mb-0">
-              Define operational privileges, data authorization levels, and scope boundaries per module.
-            </p>
-          </div>
-
-          <div className="w-100 w-md-auto text-end mt-2 mt-md-0">
+    <div className="erp-fade-in pb-5">
+      {/* ── Page Header ── */}
+      <PageHeader
+        title={isEditMode ? `Edit Role: ${name}` : 'Create Security Role'}
+        subtitle="Define action-level permissions and data access boundaries for this organizational profile"
+        showBackButton={true}
+        backFallback="/roles"
+        breadcrumbs={[
+          { label: 'Organization' },
+          { label: 'Roles', path: '/roles' },
+          { label: isEditMode ? 'Edit Role' : 'Create Role' },
+        ]}
+        actions={
+          <div className="d-flex align-items-center gap-2">
+            <Link to="/roles" className="erp-btn erp-btn-secondary">
+              <ArrowLeft size={16} /> Back to Directory
+            </Link>
             <button
               type="button"
-              className="btn btn-erp-outline w-100 w-md-auto"
-              onClick={() => navigate('/roles')}
+              className="erp-btn erp-btn-primary"
+              onClick={handleSubmit}
+              disabled={saving}
             >
-              <i className="bi bi-arrow-left me-1.5"></i>
-              <span>Back to Roles</span>
+              <Save size={16} /> {saving ? 'Saving Changes...' : 'Save Role Matrix'}
             </button>
           </div>
+        }
+      />
+
+      {error && (
+        <div className="alert alert-danger small py-2.5 px-3 mb-4 d-flex align-items-center gap-2 border-0 shadow-xs">
+          <AlertCircle size={16} className="text-danger flex-shrink-0" />
+          <span>{error}</span>
         </div>
+      )}
 
-        {/* Error Notification */}
-        {error && (
-          <div className="alert alert-danger rounded-3 d-flex align-items-center gap-2.5 p-3 mb-4">
-            <i className="bi bi-exclamation-triangle-fill fs-5 flex-shrink-0"></i>
-            <div className="small fw-semibold">{error}</div>
-          </div>
-        )}
+      <form onSubmit={handleSubmit}>
+        {/* ── Role Definition Card ── */}
+        <div className="erp-card p-4 mb-4">
+          <h5 className="fw-bold mb-3" style={{ color: 'var(--erp-text-main)', fontSize: '1rem' }}>
+            1. Role Profile & Identification
+          </h5>
 
-        <form onSubmit={handleSubmit}>
-          {/* ── SECTION 2: Role Metadata Card ── */}
-          <div className="erp-form-card">
-            <div className="erp-card-header">
-              <i className="bi bi-shield-check"></i>
-              <span>Role Identification &amp; Details</span>
+          <div className="row g-3">
+            <div className="col-12 col-md-5">
+              <label className="erp-label">Role Title / Display Name *</label>
+              <input
+                type="text"
+                className="erp-input"
+                placeholder="e.g. Regional Operations Manager"
+                value={name}
+                onChange={handleNameChange}
+                required
+              />
             </div>
-            <div className="erp-card-body">
-              <div className="row g-3">
-                <div className="col-12 col-md-4">
-                  <label className="erp-form-label">Role Name *</label>
-                  <input
-                    type="text"
-                    className="form-control erp-input-field"
-                    placeholder="e.g. Regional Operations Manager"
-                    value={name}
-                    onChange={handleNameChange}
-                    required
-                  />
-                </div>
 
-                <div className="col-12 col-md-4">
-                  <label className="erp-form-label">
-                    Role Key Identifier * {isEditMode && <span className="text-muted text-capitalize fw-normal">(Fixed)</span>}
-                  </label>
-                  <input
-                    type="text"
-                    className="form-control erp-input-field font-monospace"
-                    placeholder="e.g. regional_operations_manager"
-                    value={key}
-                    onChange={handleKeyChange}
-                    required
-                    disabled={isEditMode}
-                  />
-                  {!isEditMode && autoKey && (
-                    <small className="text-muted mt-1 d-block" style={{ fontSize: '0.72rem' }}>
-                      <i className="bi bi-magic me-1 text-primary"></i>Auto-formatted to standard code
-                    </small>
-                  )}
-                </div>
-
-                <div className="col-12 col-md-4">
-                  <label className="erp-form-label">Description</label>
-                  <input
-                    type="text"
-                    className="form-control erp-input-field"
-                    placeholder="Brief summary of duties and responsibilities..."
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                  />
-                </div>
-              </div>
+            <div className="col-12 col-md-4">
+              <label className="erp-label">System Key (Unique Slug) *</label>
+              <input
+                type="text"
+                className="erp-input font-monospace"
+                placeholder="e.g. regional_ops_mgr"
+                value={key}
+                onChange={handleKeyChange}
+                disabled={isEditMode}
+                required
+              />
+              <small className="text-muted d-block mt-1" style={{ fontSize: '0.72rem' }}>
+                {isEditMode ? 'Role key is immutable after creation' : 'Auto-generated lowercase slug'}
+              </small>
             </div>
-          </div>
 
-          {/* ── SECTION 3: Visual Interactive Permission Matrix ── */}
-          <div className="erp-form-card p-3 p-md-4">
-            <div className="d-flex align-items-center justify-content-between mb-3 border-bottom pb-3">
-              <div>
-                <h5 className="fw-bold text-dark mb-1 fs-6">
-                  <i className="bi bi-grid-3x3-gap-fill me-2 text-primary"></i>
-                  Module Rights &amp; Access Scope Configuration
-                </h5>
-                <p className="text-muted small mb-0">
-                  Toggle functional privileges across operational screens and specify department or global scope.
-                </p>
+            <div className="col-12 col-md-3">
+              <label className="erp-label">Access Model</label>
+              <div className="p-2 rounded-2 bg-light text-muted small">
+                Action-Level RBAC + Scoped ABAC
               </div>
             </div>
 
-            {/* Matrix Component (Wrapped for clean horizontal overflow on mobile) */}
-            <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-              <PermissionMatrix 
-                modules={modules} 
-                permissions={permissions} 
-                onChange={setPermissions} 
+            <div className="col-12">
+              <label className="erp-label">Role Description</label>
+              <textarea
+                className="erp-textarea"
+                rows={2}
+                placeholder="Brief summary of responsibilities and scope of access granted to this role..."
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
               />
             </div>
           </div>
+        </div>
 
-          {/* ── SECTION 4: Sticky/Responsive Action Footer ── */}
-          <div className="d-flex justify-content-end gap-2.5 mb-5 mobile-footer-actions">
-            <button
-              type="button"
-              className="btn btn-erp-outline px-4"
-              onClick={() => navigate('/roles')}
-              disabled={saving}
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="btn btn-erp-brand px-4"
-              disabled={saving}
-            >
-              {saving ? (
-                <>
-                  <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
-                  Saving Configuration...
-                </>
-              ) : (
-                <>
-                  <i className="bi bi-check2-circle me-2 fs-6"></i>
-                  Save Role Configuration
-                </>
-              )}
-            </button>
+        {/* ── Permission Matrix Card ── */}
+        <div className="erp-card p-4 mb-4">
+          <div className="d-flex flex-column flex-sm-row justify-content-between align-items-start align-items-sm-center gap-2 mb-3 pb-2 border-bottom">
+            <div>
+              <h5 className="fw-bold mb-1" style={{ color: 'var(--erp-text-main)', fontSize: '1rem' }}>
+                2. Module Action Rights & Data Scope Matrix
+              </h5>
+              <p className="text-muted small mb-0">
+                Configure module toggles, specific action permissions, and data visibility boundary scopes (OWN, TEAM, DEPARTMENT, BRANCH, ALL)
+              </p>
+            </div>
           </div>
-        </form>
 
-      </div>
+          <PermissionMatrix
+            modules={modules}
+            permissions={permissions}
+            onChange={(updated) => setPermissions(updated)}
+          />
+        </div>
+
+        {/* ── Sticky Bottom Action Bar ── */}
+        <div className="d-flex justify-content-end gap-2">
+          <Link to="/roles" className="erp-btn erp-btn-secondary">
+            Cancel
+          </Link>
+          <button type="submit" className="erp-btn erp-btn-primary" disabled={saving}>
+            <Save size={16} /> {saving ? 'Saving...' : 'Save Role Matrix'}
+          </button>
+        </div>
+      </form>
     </div>
   );
 };

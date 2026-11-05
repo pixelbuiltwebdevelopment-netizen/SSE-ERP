@@ -52,7 +52,7 @@ const AttendanceSchema = new mongoose.Schema(
       isAutoPunched: { type: Boolean, default: false },
       method: {
         type: String,
-        enum: ['Manual', 'Auto-ShiftEnd', 'Auto-MaxHours', 'Admin-Correction', 'None'],
+        enum: ['Manual', 'Auto-ShiftEnd', 'Auto-MaxHours', 'Admin-Correction', 'AUTO', 'SYSTEM_GENERATED', 'None'],
         default: 'None',
       },
     },

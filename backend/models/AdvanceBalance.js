@@ -6,24 +6,42 @@ const advanceBalanceSchema = new mongoose.Schema({
     ref: 'User',
     required: true,
     unique: true,
-    index: true
+    index: true,
   },
   totalAdvanceReceived: {
     type: Number,
     default: 0,
-    min: 0
+    min: 0,
   },
   totalExpensesDeducted: {
     type: Number,
     default: 0,
-    min: 0
+    min: 0,
+  },
+  totalRefundsReceived: {
+    type: Number,
+    default: 0,
+    min: 0,
+  },
+  totalReimbursementsPaid: {
+    type: Number,
+    default: 0,
+    min: 0,
+  },
+  openingBalance: {
+    type: Number,
+    default: 0,
   },
   currentBalance: {
     type: Number,
-    default: 0
-  }
+    default: 0,
+  },
+  lastAdvanceDate: {
+    type: Date,
+    default: null,
+  },
 }, {
-  timestamps: true
+  timestamps: true,
 });
 
 module.exports = mongoose.model('AdvanceBalance', advanceBalanceSchema);

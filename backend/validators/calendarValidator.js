@@ -15,9 +15,24 @@ exports.validateCreateEvent = [
       return true;
     }),
   body('eventType')
-    .isIn(['Meeting', 'Holiday', 'Task', 'Reminder'])
+    .isIn(['Meeting', 'Holiday', 'Task', 'Reminder', 'Other'])
     .withMessage('Invalid event type'),
   body('description')
+    .optional()
+    .isString().trim(),
+  body('customClassification')
+    .optional()
+    .isString().trim(),
+  body('daySpan')
+    .optional()
+    .isIn(['single', 'multiple']),
+  body('dayType')
+    .optional()
+    .isIn(['full', 'half']),
+  body('holidayCategory')
+    .optional()
+    .isString().trim(),
+  body('meetingLocation')
     .optional()
     .isString().trim()
 ];

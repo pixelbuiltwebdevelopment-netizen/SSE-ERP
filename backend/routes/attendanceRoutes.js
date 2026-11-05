@@ -13,11 +13,10 @@ const {
   getMyCalendar,
   getAttendanceSummaryKPIs,
   getAllAttendance,
-  getMissingPunchOuts,
   runAutoPunchOutNow,
   correctAttendanceRecord,
   getDailyReport,
-  getAttendanceAnalytics,
+  getTeamAttendanceRoster,
 } = require('../controllers/attendanceController');
 
 const {
@@ -39,13 +38,6 @@ const {
   rejectOvertime,
 } = require('../controllers/overtimeController');
 
-const {
-  getCorrections,
-  requestCorrection,
-  approveCorrection,
-  rejectCorrection,
-} = require('../controllers/attendanceCorrectionController');
-
 const router = express.Router();
 
 // All attendance endpoints require authentication
@@ -59,19 +51,11 @@ router.get('/me/history', getMyAttendanceHistory);
 router.get('/me/calendar', getMyCalendar);
 router.get('/my-records', getMyAttendanceHistory); // Legacy alias
 
-// Employee self correction & overtime submission
-router.post('/corrections', requestCorrection);
+// Overtime requests
 router.post('/overtime/requests', requestOvertime);
-
-// Overtime requests list (auto-data scoped)
 router.get('/overtime/requests', applyDataScope('attendance', 'view'), getOvertimeRequests);
 router.patch('/overtime/:requestId/approve', authorize('attendance', 'approve'), approveOvertime);
 router.patch('/overtime/:requestId/reject', authorize('attendance', 'approve'), rejectOvertime);
-
-// Correction requests list (auto-data scoped)
-router.get('/corrections', applyDataScope('attendance', 'view'), getCorrections);
-router.patch('/corrections/:id/approve', authorize('attendance', 'approve'), approveCorrection);
-router.patch('/corrections/:id/reject', authorize('attendance', 'approve'), rejectCorrection);
 
 // ================= SHIFTS & POLICIES =================
 router.get('/shifts', getShifts);
@@ -87,13 +71,12 @@ router.patch('/policies/:policyId', authorize('attendance', 'edit'), updatePolic
 // ================= MANAGEMENT / HR REPORTING & AUDIT =================
 router.get('/today', applyDataScope('attendance', 'view'), getAttendanceSummaryKPIs);
 router.get('/summary', applyDataScope('attendance', 'view'), getAttendanceSummaryKPIs);
-router.get('/analytics', applyDataScope('attendance', 'view'), getAttendanceAnalytics);
 router.get('/reports/daily', applyDataScope('attendance', 'view'), getDailyReport);
-router.get('/missing-punch-outs', applyDataScope('attendance', 'view'), getMissingPunchOuts);
 router.post('/auto-punch-out/run', authorize('attendance', 'edit'), runAutoPunchOutNow);
 router.patch('/:attendanceId/correction', authorize('attendance', 'edit'), correctAttendanceRecord);
 
 // Master attendance table query with server-side pagination and scoping
+router.get('/team-roster', applyDataScope('attendance', 'view'), getTeamAttendanceRoster);
 router.get('/', authorize('attendance', 'view'), applyDataScope('attendance', 'view'), getAllAttendance);
 
 module.exports = router;

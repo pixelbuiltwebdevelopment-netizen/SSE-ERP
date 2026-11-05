@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { leaveApi } from '../../api/leaveApi';
+import BackButton from '../../components/common/BackButton';
 
 // Official Enterprise Design System Palette
 const ERP = {
@@ -221,15 +222,8 @@ const LeaveSubmitPage = () => {
             }}
           >
             <div className="d-flex align-items-center gap-3">
-              {/* Back Button */}
-              <button
-                type="button"
-                className="erp-back-btn shadow-sm"
-                onClick={() => navigate('/leaves')}
-                title="Back to Leaves Dashboard"
-              >
-                <Icons.ArrowLeft />
-              </button>
+              {/* Standardized Global Back Button */}
+              <BackButton fallback="/leaves" tooltip="Back to Leave Dashboard" />
 
               <div>
                 <div className="d-flex align-items-center gap-2 mb-1.5">

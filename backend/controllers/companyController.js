@@ -1,4 +1,5 @@
 const Company = require('../models/Company');
+const Ticket = require('../models/Ticket');
 const ApiError = require('../utils/ApiError');
 const { logActivity } = require('../services/auditService');
 const { uploadFile, deleteFile } = require('../services/cloudinaryService');
@@ -58,7 +59,7 @@ const getCompanies = async (req, res, next) => {
     const [companies, total] = await Promise.all([
       Company.find(filter)
         .populate('createdBy', 'name email')
-        .populate('assignedTo', 'name email')
+        .populate({ path: 'assignedTo', select: 'name email', strictPopulate: false })
         .sort(sortOptions)
         .skip(skip)
         .limit(limit)
@@ -93,15 +94,79 @@ const getCompanyById = async (req, res, next) => {
     const filter = { _id: req.params.id, ...req.dataScopeFilter };
     const company = await Company.findOne(filter)
       .populate('createdBy', 'name email')
-      .populate('updatedBy', 'name email');
+      .populate('updatedBy', 'name email')
+      .populate({ path: 'assignedTo', select: 'name email', strictPopulate: false });
 
     if (!company) {
       return next(new ApiError(404, 'Company profile not found or access denied.'));
     }
 
+    // Fetch all tickets booked for this company
+    const rawTickets = await Ticket.find({ companyId: company._id })
+      .populate({ path: 'assignedTo', select: 'name email employeeId avatar', strictPopulate: false })
+      .populate({ path: 'startedBy', select: 'name email employeeId avatar', strictPopulate: false })
+      .populate({ path: 'stoppedBy', select: 'name email employeeId avatar', strictPopulate: false })
+      .populate({ path: 'createdBy', select: 'name email employeeId avatar', strictPopulate: false })
+      .populate({ path: 'companyId', select: 'company profileCode contactPerson contactNumber alternatePhone contactEmail city state area addressLine1 pincode', strictPopulate: false })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const tickets = rawTickets.map((t) => ({
+      ...t,
+      assignedTo: t.assignedTo || t.startedBy || null,
+      companyId: t.companyId && typeof t.companyId === 'object' && t.companyId.company ? t.companyId : company,
+    }));
+
+    const totalTickets = tickets.length;
+    const openTickets = tickets.filter(
+      (t) => t.status === 'Open' || t.status === 'OPEN'
+    ).length;
+    const inProgressTickets = tickets.filter(
+      (t) => t.status === 'In Progress' || t.status === 'IN_PROGRESS'
+    ).length;
+    const resolvedTickets = tickets.filter(
+      (t) => t.status === 'Resolved' || t.status === 'RESOLVED' || t.status === 'Completed'
+    ).length;
+    const cancelledTickets = tickets.filter(
+      (t) => t.status === 'Cancelled' || t.status === 'CANCELLED'
+    ).length;
+
+    const totalDurationMinutes = tickets.reduce((acc, t) => {
+      if (t.totalWorkingSeconds) {
+        return acc + Math.floor(t.totalWorkingSeconds / 60);
+      }
+      if (t.workingDuration?.durationMs) {
+        return acc + Math.floor(t.workingDuration.durationMs / (1000 * 60));
+      }
+      if (t.workingDuration?.totalHours !== undefined || t.workingDuration?.totalMinutes !== undefined) {
+        return acc + ((t.workingDuration.totalHours || 0) * 60 + (t.workingDuration.totalMinutes || 0));
+      }
+      if (t.startTime && t.stopTime) {
+        const ms = Math.max(0, new Date(t.stopTime).getTime() - new Date(t.startTime).getTime());
+        return acc + Math.floor(ms / (1000 * 60));
+      }
+      return acc + (t.workingDurationMinutes || 0);
+    }, 0);
+    const totalHours = parseFloat((totalDurationMinutes / 60).toFixed(1));
+
+    const stats = {
+      totalTickets,
+      openTickets,
+      inProgressTickets,
+      resolvedTickets,
+      cancelledTickets,
+      totalHours,
+      machinesCount: company.machines?.length || 0,
+      photosCount: company.siteVisitImages?.length || 0,
+    };
+
     res.status(200).json({
       success: true,
-      data: company,
+      data: {
+        ...company.toObject(),
+        stats,
+        tickets,
+      },
     });
   } catch (error) {
     next(error);

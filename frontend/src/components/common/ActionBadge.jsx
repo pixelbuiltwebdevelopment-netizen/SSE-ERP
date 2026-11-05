@@ -1,16 +1,34 @@
 import React from 'react';
-import { SCOPE_COLORS } from '../../utils/constants';
 
 const ActionBadge = ({ action, scope, allowed }) => {
   if (!allowed) {
-    return <span className="badge bg-light text-muted border me-1 mb-1">{action}: ✗</span>;
+    return (
+      <span
+        className="erp-badge erp-badge-neutral me-1 mb-1"
+        style={{ opacity: 0.6, fontSize: '0.675rem' }}
+      >
+        {action}: ✗
+      </span>
+    );
   }
 
-  const badgeClass = SCOPE_COLORS[scope] || 'bg-primary text-white';
+  const getScopeBadge = () => {
+    switch (scope) {
+      case 'ALL':
+        return 'erp-badge-info';
+      case 'DEPARTMENT':
+      case 'TEAM':
+        return 'erp-badge-purple';
+      case 'BRANCH':
+        return 'erp-badge-warning';
+      default:
+        return 'erp-badge-success';
+    }
+  };
 
   return (
-    <span className={`badge ${badgeClass} me-1 mb-1`}>
-      {action}: {scope || 'YES'}
+    <span className={`erp-badge ${getScopeBadge()} me-1 mb-1`} style={{ fontSize: '0.675rem' }}>
+      {action}: {scope || 'Allowed'}
     </span>
   );
 };

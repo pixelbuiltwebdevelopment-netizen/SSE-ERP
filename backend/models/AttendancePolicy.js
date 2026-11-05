@@ -46,12 +46,12 @@ const attendancePolicySchema = new mongoose.Schema(
     },
     unpaidBreakMinutes: {
       type: Number,
-      default: 60,
+      default: 0,
       min: 0,
     },
     paidBreakMinutes: {
       type: Number,
-      default: 15,
+      default: 0,
       min: 0,
     },
     earlyDepartureThresholdMinutes: {
@@ -76,7 +76,15 @@ const attendancePolicySchema = new mongoose.Schema(
       type: Number,
       default: 4.0,
     },
-    // Missing Punch Out Automation
+    // Missing Punch Out Settings & Automation
+    autoPunchOutEnabled: {
+      type: Boolean,
+      default: true,
+    },
+    autoPunchOutTime: {
+      type: String,
+      default: '18:00',
+    },
     autoPunchOutMode: {
       type: String,
       enum: ['SHIFT_END', 'MAX_HOURS', 'DISABLED'],

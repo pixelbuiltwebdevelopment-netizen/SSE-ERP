@@ -14,9 +14,12 @@ export const loginUser = createAsyncThunk(
       }
       return { user, accessToken };
     } catch (error) {
-      return rejectWithValue(
-        error.response?.data?.message || 'Login failed. Please check credentials.'
-      );
+      const message =
+        error.response?.data?.message ||
+        (!error.response
+          ? 'Unable to connect to server. Please ensure the backend is running.'
+          : 'Login failed. Please check credentials.');
+      return rejectWithValue(message);
     }
   }
 );

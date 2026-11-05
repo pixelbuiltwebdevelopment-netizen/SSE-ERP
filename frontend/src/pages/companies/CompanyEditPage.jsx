@@ -2,27 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { getCompanyById, updateCompany, uploadCompanyFile } from '../../api/companyApi';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
+import PageHeader from '../../components/common/PageHeader';
 import { COUNTRY_LIST, statesOf, districtsOf, regionLabel, districtLabel } from '../../utils/geo';
-
-const blankMachine = () => ({
-  id: `m_${Math.random().toString(36).substring(2, 9)}`,
-  machineType: 'Color Sorter',
-  model: '',
-  version: '',
-  numberOfChutes: '',
-  serialNumber: '',
-  stdOrExp: 'Std',
-  manufactureDate: new Date().toISOString().substring(0, 10),
-  installationDate: new Date().toISOString().substring(0, 10),
-  contract: {
-    type: 'Warranty',
-    startDate: new Date().toISOString().substring(0, 10),
-    endDate: '',
-    duration: '1 Year',
-    amount: 0,
-    visits: 4,
-  },
-});
 
 const CompanyEditPage = () => {
   const { id } = useParams();
@@ -48,7 +29,6 @@ const CompanyEditPage = () => {
     city: '',
     pincode: '',
     status: 'Active',
-    machines: [],
   });
 
   const [logo, setLogo] = useState(null);
@@ -80,7 +60,6 @@ const CompanyEditPage = () => {
             city: c.city || '',
             pincode: c.pincode || '',
             status: c.status || 'Active',
-            machines: c.machines || [],
           });
           setLogo(c.logo || null);
           setDocuments(c.documents || []);
@@ -142,28 +121,6 @@ const CompanyEditPage = () => {
     } finally {
       setUploadingDoc(false);
     }
-  };
-
-  const addMachine = () => {
-    setForm((prev) => ({ ...prev, machines: [...prev.machines, blankMachine()] }));
-  };
-
-  const removeMachine = (mid) => {
-    setForm((prev) => ({ ...prev, machines: prev.machines.filter((m) => m.id !== mid) }));
-  };
-
-  const updateMachine = (mid, field, value) => {
-    setForm((prev) => ({
-      ...prev,
-      machines: prev.machines.map((m) => {
-        if (m.id !== mid) return m;
-        if (field.startsWith('contract.')) {
-          const subField = field.split('.')[1];
-          return { ...m, contract: { ...m.contract, [subField]: value } };
-        }
-        return { ...m, [field]: value };
-      }),
-    }));
   };
 
   const handleSubmit = async (e) => {
@@ -250,18 +207,19 @@ const CompanyEditPage = () => {
         }
       `}</style>
 
-      {/* Header */}
-      <div className="d-flex justify-content-between align-items-center mb-4">
-        <div>
-          <h3 className="fw-bold mb-1" style={{ color: '#071A33' }}>✏️ Edit Company Profile</h3>
-          <p className="small mb-0" style={{ color: '#64748B' }}>
-            Modify enterprise profile data, contacts, locations, uploaded documents, and machinery fleet.
-          </p>
-        </div>
-        <button className="btn btn-outline-secondary btn-sm" onClick={() => navigate('/companies')}>
-          <i className="bi bi-arrow-left me-1"></i> Back
-        </button>
-      </div>
+      {/* Page Header with Back Navigation */}
+      <PageHeader
+        title={`Edit Profile: ${form.company || 'Company'}`}
+        subtitle="Modify enterprise profile data, contacts, locations, and uploaded documents"
+        breadcrumbs={[
+          { label: 'Organization' },
+          { label: 'Company Profiles', path: '/companies' },
+          ...(id ? [{ label: form.company || 'Details', path: `/companies/${id}` }] : []),
+          { label: 'Edit Profile' },
+        ]}
+        showBackButton={true}
+        backFallback={id ? `/companies/${id}` : '/companies'}
+      />
 
       {error && (
         <div className="alert p-3 mb-4 rounded-3 d-flex justify-content-between align-items-center" style={{ backgroundColor: '#FEE2E2', color: '#DC2626', borderColor: '#FCA5A5' }}>
@@ -388,56 +346,6 @@ const CompanyEditPage = () => {
               )}
             </div>
           </div>
-        </div>
-
-        {/* 5. Machines Section */}
-        <div className="erp-card-elevated p-3 p-md-4 mb-4">
-          <div className="d-flex justify-content-between align-items-center erp-section-title">
-            <span>5. Machine Fleet ({form.machines.length})</span>
-            <button type="button" className="btn btn-sm btn-outline-primary" onClick={addMachine}>
-              + Add Machine
-            </button>
-          </div>
-          {form.machines.length === 0 ? (
-            <p className="text-muted small mb-0">No machines registered.</p>
-          ) : (
-            <div className="d-flex flex-column gap-3">
-              {form.machines.map((m, idx) => (
-                <div key={m.id} className="border rounded-3 p-3 bg-light position-relative">
-                  <button type="button" className="btn-close position-absolute top-0 end-0 m-2.5" onClick={() => removeMachine(m.id)} title="Remove"></button>
-                  <h6 className="fw-bold mb-3" style={{ color: '#071A33' }}>Machine #{idx + 1}</h6>
-                  <div className="row g-2.5">
-                    <div className="col-12 col-md-3">
-                      <label className="form-label small fw-semibold">Machine Type</label>
-                      <select className="form-select form-select-sm" value={m.machineType} onChange={(e) => updateMachine(m.id, 'machineType', e.target.value)}>
-                        <option value="Color Sorter">Color Sorter</option>
-                        <option value="Grain Sorter">Grain Sorter</option>
-                        <option value="Cleaner">Cleaner</option>
-                        <option value="Packer">Packer</option>
-                        <option value="Other">Other</option>
-                      </select>
-                    </div>
-                    <div className="col-12 col-md-3">
-                      <label className="form-label small fw-semibold">Model</label>
-                      <input type="text" className="form-control form-control-sm" value={m.model} onChange={(e) => updateMachine(m.id, 'model', e.target.value)} />
-                    </div>
-                    <div className="col-12 col-md-3">
-                      <label className="form-label small fw-semibold">Serial Number</label>
-                      <input type="text" className="form-control form-control-sm font-monospace" value={m.serialNumber} onChange={(e) => updateMachine(m.id, 'serialNumber', e.target.value)} />
-                    </div>
-                    <div className="col-12 col-md-3">
-                      <label className="form-label small fw-semibold">Contract Type</label>
-                      <select className="form-select form-select-sm" value={m.contract?.type || 'Warranty'} onChange={(e) => updateMachine(m.id, 'contract.type', e.target.value)}>
-                        <option value="Warranty">Warranty</option>
-                        <option value="AMC">AMC</option>
-                        <option value="Out of Warranty">Out of Warranty</option>
-                      </select>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
 
         {/* Submit Actions */}

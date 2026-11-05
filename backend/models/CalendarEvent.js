@@ -21,9 +21,37 @@ const calendarEventSchema = new mongoose.Schema({
   },
   eventType: {
     type: String,
-    enum: ['Meeting', 'Holiday', 'Task', 'Reminder'],
+    enum: ['Meeting', 'Holiday', 'Task', 'Reminder', 'Other'],
     default: 'Holiday',
     index: true,
+  },
+  customClassification: {
+    type: String,
+    default: '',
+    trim: true,
+  },
+  daySpan: {
+    type: String,
+    enum: ['single', 'multiple'],
+    default: 'single',
+  },
+  dayType: {
+    type: String,
+    enum: ['full', 'half'],
+    default: 'full',
+  },
+  halfDaySession: {
+    type: String,
+    default: '',
+  },
+  holidayCategory: {
+    type: String,
+    default: 'Mandatory Public Holiday',
+  },
+  meetingLocation: {
+    type: String,
+    default: '',
+    trim: true,
   },
   isFullDay: {
     type: Boolean,

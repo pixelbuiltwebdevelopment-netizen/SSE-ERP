@@ -1,28 +1,25 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import {
+  Wallet,
+  FileText,
+  Download,
+  CheckCircle2,
+  AlertCircle,
+  Eye,
+  Filter,
+} from 'lucide-react';
 import { erpApi } from '../../api/erpApi';
 import { useAuth } from '../../hooks/useAuth';
-import LoadingSpinner from '../../components/common/LoadingSpinner';
+import PageHeader from '../../components/common/PageHeader';
+import StatCard from '../../components/common/StatCard';
+import StatusBadge from '../../components/common/StatusBadge';
+import EmptyState from '../../components/common/EmptyState';
+import { TableSkeleton } from '../../components/common/Skeleton';
 import Modal from '../../components/common/Modal';
 
-// Official ERP Design System Palette
-const ERP = {
-  primary: '#087FF5',       // Electric Blue
-  sidebar: '#071A33',       // Deep Navy
-  secondaryBlue: '#0057B8', // Royal Blue
-  silver: '#C5CED8',        // Silver
-  mainBg: '#F4F7FB',        // Ice White
-  cardBg: '#FFFFFF',        // Pure White
-  textPrimary: '#1E293B',   // Slate
-  textSecondary: '#64748B', // Gray
-  border: '#E2E8F0',        // Light Border
-  success: '#16A34A',       // Green
-  warning: '#D97706',       // Amber
-  error: '#DC2626',         // Red
-};
-
 const MONTHS = [
-  'January','February','March','April','May','June',
-  'July','August','September','October','November','December'
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'
 ];
 
 const EmployeeSalaryPage = () => {
@@ -59,7 +56,6 @@ const EmployeeSalaryPage = () => {
     }
   };
 
-  // PDF DOWNLOAD FUNCTION NAMED: [EmployeeID]_[Date]_SalarySlip.pdf
   const handleDownloadSalaryPDF = async (salary) => {
     const empId = user?.employeeId || user?._id?.slice(-6) || 'EMP';
     const formattedDate = `${salary.year}-${String(salary.month).padStart(2, '0')}`;
@@ -83,7 +79,6 @@ const EmployeeSalaryPage = () => {
       }
     }
 
-    // Fallback: Generate printable PDF payslip invoice
     const printWin = window.open('', '_blank');
     if (!printWin) {
       alert('Please allow popups to download/print your Payslip PDF.');
@@ -98,8 +93,8 @@ const EmployeeSalaryPage = () => {
           <style>
             body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; padding: 30px; color: #1E293B; }
             .slip-card { border: 2px solid #E2E8F0; border-radius: 12px; padding: 24px; max-width: 700px; margin: auto; }
-            .header { display: flex; justify-content: space-between; border-bottom: 2px solid #087FF5; padding-bottom: 12px; margin-bottom: 20px; }
-            .title { font-size: 20px; font-weight: bold; color: #071A33; }
+            .header { display: flex; justify-content: space-between; border-bottom: 2px solid #0284C7; padding-bottom: 12px; margin-bottom: 20px; }
+            .title { font-size: 20px; font-weight: bold; color: #0B132B; }
             .row { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 14px; }
             .total-row { border-top: 2px solid #E2E8F0; margin-top: 15px; padding-top: 10px; font-size: 16px; font-weight: bold; }
             @media print { body { padding: 0; } }
@@ -113,7 +108,7 @@ const EmployeeSalaryPage = () => {
                 <small style="color: #64748B;">Period: ${MONTHS[salary.month - 1]} ${salary.year}</small>
               </div>
               <div style="text-align: right;">
-                <strong style="color: #087FF5;">#${salary._id?.slice(-6).toUpperCase()}</strong><br/>
+                <strong style="color: #0284C7;">#${salary._id?.slice(-6).toUpperCase()}</strong><br/>
                 <small>Emp ID: ${empId}</small>
               </div>
             </div>
@@ -122,11 +117,11 @@ const EmployeeSalaryPage = () => {
             <div class="row"><span>Present Days:</span><span>${salary.presentDays} / ${salary.totalWorkingDays} Days</span></div>
             <hr style="border: 0; border-top: 1px dashed #CBD5E1; margin: 15px 0;" />
             <div class="row"><span>Base Salary:</span><span>₹${(salary.baseSalary || 0).toLocaleString()}</span></div>
-            <div class="row"><span>Gross Salary:</span><span>₹${(salary.grossSalary || 0).toLocaleString()}</span></div>
-            <div class="row" style="color: #DC2626;"><span>Advance Deductions:</span><span>- ₹${(salary.advanceDeductions || 0).toLocaleString()}</span></div>
+            <div class="row"><span>Gross Salary:</span><span>₹${(salary.grossSalary || 0).toFixed(2)}</span></div>
+            <div class="row" style="color: #DC2626;"><span>Advance Deductions:</span><span>- ₹${(salary.advanceDeductions || 0).toFixed(2)}</span></div>
             <div class="row total-row" style="color: #16A34A;">
               <span>Net Salary Payable:</span>
-              <span>₹${(salary.netSalary || 0).toLocaleString()}</span>
+              <span>₹${(salary.netSalary || 0).toFixed(2)}</span>
             </div>
             <div style="margin-top: 30px; font-size: 11px; color: #64748B; text-align: center;">
               This is a computer-generated salary receipt. Document ID: ${customFileName}
@@ -141,14 +136,12 @@ const EmployeeSalaryPage = () => {
     printWin.document.close();
   };
 
-  // Summary stats
   const totalAdvanceReceived = advances.reduce((sum, a) => sum + (a.amount || 0), 0);
   const totalDeducted = advances.reduce((sum, a) => sum + (a.deductedAmount || 0), 0);
   const totalPending = totalAdvanceReceived - totalDeducted;
 
-  // Filtered Salaries
   const filteredSalaries = useMemo(() => {
-    return salaries.filter(s => {
+    return salaries.filter((s) => {
       const matchesYear = !filterYear || String(s.year) === String(filterYear);
       const matchesMonth = !filterMonth || String(s.month) === String(filterMonth);
       const matchesStatus = !filterStatus || s.status === filterStatus;
@@ -156,410 +149,284 @@ const EmployeeSalaryPage = () => {
     });
   }, [salaries, filterYear, filterMonth, filterStatus]);
 
-  // Filtered Advances
   const filteredAdvances = useMemo(() => {
-    return advances.filter(a => {
+    return advances.filter((a) => {
       const matchesStatus = !filterStatus || a.status === filterStatus;
       return matchesStatus;
     });
   }, [advances, filterStatus]);
 
   return (
-    <>
-      <style>{`
-        .erp-card-elevated {
-          transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease;
-        }
-        .erp-card-elevated:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 8px 20px rgba(0, 0, 0, 0.06) !important;
-        }
-        .erp-hover-btn {
-          transition: all 0.18s ease-in-out;
-        }
-        .erp-hover-btn:hover {
-          transform: translateY(-1px);
-          filter: brightness(1.04);
-        }
-        .erp-table-row {
-          transition: background-color 0.15s ease;
-        }
-        .erp-table-row:hover {
-          background-color: #F8FAFC !important;
-        }
-      `}</style>
+    <div className="erp-fade-in pb-4">
+      {/* ── Page Header ── */}
+      <PageHeader
+        title="My Salary Slips & Advances"
+        subtitle="View your monthly compensation statements, net earnings breakdowns, and salary advance repayments"
+        breadcrumbs={[{ label: 'Finance' }, { label: 'My Salary' }]}
+      />
 
-      <div 
-        className="w-100 px-3 px-sm-4 px-xl-5 py-4"
-        style={{ backgroundColor: ERP.mainBg, minHeight: '100vh', color: ERP.textPrimary }}
-      >
-        <div className="mx-auto" style={{ maxWidth: '1360px' }}>
-          
-          {/* Header Banner */}
-          <div
-            className="d-flex flex-column flex-sm-row justify-content-between align-items-start align-items-sm-center gap-3 mb-4 p-3.5 p-sm-4 rounded-4 shadow-sm"
-            style={{ backgroundColor: ERP.cardBg, border: `1px solid ${ERP.border}` }}
-          >
-            <div>
-              <div className="d-flex align-items-center gap-2 mb-1.5">
-                <span
-                  className="badge rounded-pill fw-bold"
-                  style={{ backgroundColor: '#EBF4FE', color: ERP.primary, fontSize: '0.68rem', letterSpacing: '0.5px' }}
-                >
-                  PERSONAL PAYROLL
-                </span>
-              </div>
-              <h3 className="fw-bold mb-1" style={{ color: ERP.sidebar, fontSize: '1.4rem', letterSpacing: '-0.2px' }}>
-                My Salary & Advances
-              </h3>
-              <p className="small mb-0 text-muted" style={{ fontSize: '0.82rem' }}>
-                Track your monthly payslips, verified salary settlements, and advance recovery ledger.
-              </p>
-            </div>
-          </div>
+      {/* ── KPI Row ── */}
+      <div className="row g-3 mb-4">
+        <div className="col-12 col-sm-4">
+          <StatCard
+            title="Generated Payslips"
+            value={salaries.length}
+            subtitle="Verified compensation cycles"
+            icon={FileText}
+            variant="primary"
+          />
+        </div>
+        <div className="col-12 col-sm-4">
+          <StatCard
+            title="Settled / Paid"
+            value={salaries.filter((s) => s.status === 'Paid').length}
+            subtitle="Credited monthly salaries"
+            icon={CheckCircle2}
+            variant="success"
+          />
+        </div>
+        <div className="col-12 col-sm-4">
+          <StatCard
+            title="Outstanding Advance Liability"
+            value={`₹${totalPending.toLocaleString()}`}
+            subtitle="Pending salary deduction"
+            icon={Wallet}
+            variant={totalPending > 0 ? 'warning' : 'success'}
+          />
+        </div>
+      </div>
 
-          {/* KPI Summary Cards Grid */}
-          <div className="row g-3 g-xl-4 mb-4">
-            <div className="col-12 col-md-4">
-              <div 
-                className="card border-0 shadow-sm rounded-4 h-100 erp-card-elevated"
-                style={{ backgroundColor: ERP.cardBg, border: `1px solid ${ERP.border}` }}
-              >
-                <div className="card-body p-3.5 p-sm-4 d-flex align-items-center gap-3">
-                  <div 
-                    className="rounded-3 d-flex align-items-center justify-content-center"
-                    style={{ width: '48px', height: '48px', backgroundColor: '#EBF4FE', color: ERP.primary, fontSize: '1.4rem' }}
-                  >
-                    📄
-                  </div>
-                  <div>
-                    <div className="small text-uppercase fw-bold text-muted" style={{ fontSize: '0.68rem', letterSpacing: '0.5px' }}>
-                      Total Payslips
-                    </div>
-                    <div className="fw-bold fs-4" style={{ color: ERP.sidebar }}>{salaries.length}</div>
-                  </div>
-                </div>
-              </div>
-            </div>
+      {/* ── Tabs ── */}
+      <div className="erp-tabs-nav mb-3">
+        <button
+          type="button"
+          className={`erp-tab-btn ${activeTab === 'salaries' ? 'active' : ''}`}
+          onClick={() => setActiveTab('salaries')}
+        >
+          <FileText size={16} />
+          <span>My Payslips</span>
+        </button>
+        <button
+          type="button"
+          className={`erp-tab-btn ${activeTab === 'advances' ? 'active' : ''}`}
+          onClick={() => setActiveTab('advances')}
+        >
+          <Wallet size={16} />
+          <span>Advance Repayment Ledger</span>
+        </button>
+      </div>
 
-            <div className="col-12 col-md-4">
-              <div 
-                className="card border-0 shadow-sm rounded-4 h-100 erp-card-elevated"
-                style={{ backgroundColor: ERP.cardBg, border: `1px solid ${ERP.border}` }}
-              >
-                <div className="card-body p-3.5 p-sm-4 d-flex align-items-center gap-3">
-                  <div 
-                    className="rounded-3 d-flex align-items-center justify-content-center"
-                    style={{ width: '48px', height: '48px', backgroundColor: '#DCFCE7', color: ERP.success, fontSize: '1.4rem' }}
-                  >
-                    ✅
-                  </div>
-                  <div>
-                    <div className="small text-uppercase fw-bold text-muted" style={{ fontSize: '0.68rem', letterSpacing: '0.5px' }}>
-                      Settled / Paid
-                    </div>
-                    <div className="fw-bold fs-4" style={{ color: ERP.success }}>
-                      {salaries.filter(s => s.status === 'Paid').length}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="col-12 col-md-4">
-              <div 
-                className="card border-0 shadow-sm rounded-4 h-100 erp-card-elevated"
-                style={{ backgroundColor: ERP.cardBg, border: `1px solid ${ERP.border}` }}
-              >
-                <div className="card-body p-3.5 p-sm-4 d-flex align-items-center gap-3">
-                  <div 
-                    className="rounded-3 d-flex align-items-center justify-content-center"
-                    style={{ width: '48px', height: '48px', backgroundColor: '#FEF3C7', color: ERP.warning, fontSize: '1.4rem' }}
-                  >
-                    ⏳
-                  </div>
-                  <div>
-                    <div className="small text-uppercase fw-bold text-muted" style={{ fontSize: '0.68rem', letterSpacing: '0.5px' }}>
-                      Pending Advance Liability
-                    </div>
-                    <div className="fw-bold fs-4" style={{ color: totalPending > 0 ? ERP.warning : ERP.success }}>
-                      ₹{totalPending.toLocaleString()}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Navigation Tabs */}
-          <div 
-            className="d-flex flex-wrap align-items-center gap-2 mb-4 p-1.5 p-sm-2 rounded-3 shadow-sm"
-            style={{ backgroundColor: ERP.cardBg, border: `1px solid ${ERP.border}`, width: 'fit-content' }}
-          >
-            <button
-              type="button"
-              className="btn fw-bold px-4 py-2 rounded-2 shadow-none"
-              style={{
-                backgroundColor: activeTab === 'salaries' ? ERP.primary : 'transparent',
-                color: activeTab === 'salaries' ? '#FFFFFF' : ERP.textSecondary,
-                border: activeTab === 'salaries' ? `1px solid ${ERP.primary}` : '1px solid transparent',
-                fontSize: '0.84rem',
-              }}
-              onClick={() => setActiveTab('salaries')}
-            >
-              📑 My Salary Slips
-            </button>
-            <button
-              type="button"
-              className="btn fw-bold px-4 py-2 rounded-2 shadow-none"
-              style={{
-                backgroundColor: activeTab === 'advances' ? ERP.primary : 'transparent',
-                color: activeTab === 'advances' ? '#FFFFFF' : ERP.textSecondary,
-                border: activeTab === 'advances' ? `1px solid ${ERP.primary}` : '1px solid transparent',
-                fontSize: '0.84rem',
-              }}
-              onClick={() => setActiveTab('advances')}
-            >
-              🏦 My Advances History
-            </button>
-          </div>
-
-          {/* Filter Bar */}
-          <div 
-            className="d-flex flex-column flex-sm-row justify-content-between align-items-stretch align-items-sm-center gap-3 mb-4 p-3 p-sm-3.5 rounded-4 shadow-sm"
-            style={{ backgroundColor: ERP.cardBg, border: `1px solid ${ERP.border}` }}
-          >
-            <div className="d-flex align-items-center gap-2">
-              <h6 className="fw-bold mb-0" style={{ color: ERP.sidebar, fontSize: '0.90rem' }}>
-                Filter History
-              </h6>
-              <span className="badge rounded-pill fw-semibold" style={{ backgroundColor: '#F1F5F9', color: ERP.textSecondary, fontSize: '0.72rem' }}>
-                {activeTab === 'salaries' ? filteredSalaries.length : filteredAdvances.length} Records
-              </span>
-            </div>
-
-            <div className="d-flex flex-wrap align-items-center gap-2">
-              {activeTab === 'salaries' && (
-                <>
-                  <select
-                    className="form-select form-select-sm fw-semibold shadow-none"
-                    value={filterMonth}
-                    onChange={(e) => setFilterMonth(e.target.value)}
-                    style={{ borderRadius: '8px', borderColor: ERP.border, fontSize: '0.82rem', minWidth: '120px' }}
-                  >
-                    <option value="">All Months</option>
-                    {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
-                  </select>
-
-                  <select
-                    className="form-select form-select-sm fw-semibold shadow-none"
-                    value={filterYear}
-                    onChange={(e) => setFilterYear(e.target.value)}
-                    style={{ borderRadius: '8px', borderColor: ERP.border, fontSize: '0.82rem', minWidth: '100px' }}
-                  >
-                    <option value="">All Years</option>
-                    <option value="2025">2025</option>
-                    <option value="2026">2026</option>
-                    <option value="2027">2027</option>
-                  </select>
-                </>
-              )}
-
-              <select
-                className="form-select form-select-sm fw-semibold shadow-none"
-                value={filterStatus}
-                onChange={(e) => setFilterStatus(e.target.value)}
-                style={{ borderRadius: '8px', borderColor: ERP.border, fontSize: '0.82rem', minWidth: '120px' }}
-              >
-                <option value="">All Statuses</option>
-                {activeTab === 'salaries' ? (
-                  <>
-                    <option value="Paid">Paid Only</option>
-                    <option value="Draft">Draft Only</option>
-                  </>
-                ) : (
-                  <>
-                    <option value="Pending">Pending</option>
-                    <option value="Partial">Partial</option>
-                    <option value="Deducted">Deducted</option>
-                  </>
-                )}
-              </select>
-            </div>
-          </div>
-
-          {loading ? (
-            <div className="py-5 text-center">
-              <LoadingSpinner text={activeTab === 'salaries' ? 'Loading salary slips...' : 'Loading advances...'} />
-            </div>
-          ) : (
+      {/* ── Filters Bar ── */}
+      <div className="erp-card p-3 mb-4">
+        <div className="row g-2 align-items-center">
+          {activeTab === 'salaries' && (
             <>
-              {/* MY SALARY SLIPS TAB */}
-              {activeTab === 'salaries' && (
-                <div className="card border-0 shadow-sm rounded-4 overflow-hidden mb-4" style={{ border: `1px solid ${ERP.border}` }}>
-                  <div className="card-body p-0">
-                    <div className="table-responsive">
-                      <table className="table align-middle mb-0 text-nowrap">
-                        <thead style={{ backgroundColor: '#F8FAFC', borderBottom: `2px solid ${ERP.border}` }}>
-                          <tr className="text-uppercase" style={{ color: ERP.textSecondary, fontSize: '0.74rem', letterSpacing: '0.5px' }}>
-                            <th className="py-3 px-3 px-md-4">Month / Year</th>
-                            <th className="py-3 px-3 text-end">Base Salary</th>
-                            <th className="py-3 px-3 text-end">Present Days</th>
-                            <th className="py-3 px-3 text-end">Gross Salary</th>
-                            <th className="py-3 px-3 text-end">Advance Deducted</th>
-                            <th className="py-3 px-3 text-end">Net Salary</th>
-                            <th className="py-3 px-3 text-center">Status</th>
-                            <th className="py-3 px-3 px-md-4 text-center">Download Payslip</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {filteredSalaries.length === 0 ? (
-                            <tr>
-                              <td colSpan="8" className="text-center py-5 text-muted">
-                                <span className="fs-1 d-block mb-2 opacity-50">📑</span>
-                                No salary records match your filter criteria.
-                              </td>
-                            </tr>
-                          ) : filteredSalaries.map(s => (
-                            <tr key={s._id} className="erp-table-row" style={{ borderBottom: `1px solid ${ERP.border}` }}>
-                              <td className="py-3.5 px-3 px-md-4 fw-semibold" style={{ color: ERP.sidebar }}>
-                                {MONTHS[s.month - 1]} {s.year}
-                              </td>
-                              <td className="py-3.5 px-3 text-end font-monospace">₹{(s.baseSalary || 0).toLocaleString()}</td>
-                              <td className="py-3.5 px-3 text-end small">{s.presentDays} / {s.totalWorkingDays} days</td>
-                              <td className="py-3.5 px-3 text-end font-monospace">₹{(s.grossSalary || 0).toFixed(2)}</td>
-                              <td className="py-3.5 px-3 text-end font-monospace fw-semibold" style={{ color: ERP.error }}>
-                                {s.advanceDeductions > 0 ? `- ₹${s.advanceDeductions.toFixed(2)}` : '—'}
-                              </td>
-                              <td className="py-3.5 px-3 text-end font-monospace fw-bold" style={{ color: ERP.success, fontSize: '0.92rem' }}>
-                                ₹{(s.netSalary || 0).toFixed(2)}
-                              </td>
-                              <td className="py-3.5 px-3 text-center">
-                                <span 
-                                  className="badge px-2.5 py-1 fw-semibold rounded-pill"
-                                  style={{
-                                    backgroundColor: s.status === 'Paid' ? '#DCFCE7' : '#F1F5F9',
-                                    color: s.status === 'Paid' ? ERP.success : ERP.textSecondary,
-                                    border: `1px solid ${s.status === 'Paid' ? '#BBF7D0' : ERP.border}`
-                                  }}
-                                >
-                                  {s.status}
-                                </span>
-                              </td>
-                              {/* PDF Download Button named: [EmployeeID]_[Date]_SalarySlip.pdf */}
-                              <td className="py-3.5 px-3 px-md-4 text-center">
-                                <button
-                                  type="button"
-                                  className="btn btn-sm btn-outline-primary rounded-2 px-3 py-1 erp-hover-btn fw-bold"
-                                  style={{ fontSize: '0.76rem' }}
-                                  title={`Download ${user?.employeeId || 'EMP'}_${s.year}-${s.month}_SalarySlip.pdf`}
-                                  onClick={() => handleDownloadSalaryPDF(s)}
-                                >
-                                  📥 Download PDF
-                                </button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                </div>
-              )}
+              <div className="col-6 col-md-3">
+                <select
+                  className="erp-select"
+                  value={filterMonth}
+                  onChange={(e) => setFilterMonth(e.target.value)}
+                >
+                  <option value="">All Months</option>
+                  {MONTHS.map((m, i) => (
+                    <option key={i} value={i + 1}>
+                      {m}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-              {/* MY ADVANCES TAB */}
-              {activeTab === 'advances' && (
-                <>
-                  {advances.length > 0 && (
-                    <div 
-                      className="card border-0 shadow-sm rounded-4 text-white mb-4 p-3.5 p-sm-4"
-                      style={{ background: `linear-gradient(135deg, ${ERP.primary} 0%, ${ERP.secondaryBlue} 100%)` }}
-                    >
-                      <div className="row text-center g-3">
-                        <div className="col-4">
-                          <div className="small opacity-75 text-uppercase fw-semibold" style={{ fontSize: '0.70rem', letterSpacing: '0.5px' }}>Total Advance Issued</div>
-                          <div className="fw-bold fs-4 mt-1">₹{totalAdvanceReceived.toLocaleString()}</div>
-                        </div>
-                        <div className="col-4 border-start border-end border-white border-opacity-25">
-                          <div className="small opacity-75 text-uppercase fw-semibold" style={{ fontSize: '0.70rem', letterSpacing: '0.5px' }}>Total Deducted</div>
-                          <div className="fw-bold fs-4 mt-1">₹{totalDeducted.toLocaleString()}</div>
-                        </div>
-                        <div className="col-4">
-                          <div className="small opacity-75 text-uppercase fw-semibold" style={{ fontSize: '0.70rem', letterSpacing: '0.5px' }}>Outstanding Liability</div>
-                          <div className="fw-bold fs-4 mt-1" style={{ color: totalPending > 0 ? '#FDE68A' : '#FFFFFF' }}>
-                            ₹{totalPending.toLocaleString()}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="card border-0 shadow-sm rounded-4 overflow-hidden mb-4" style={{ border: `1px solid ${ERP.border}` }}>
-                    <div className="card-body p-0">
-                      <div className="table-responsive">
-                        <table className="table align-middle mb-0 text-nowrap">
-                          <thead style={{ backgroundColor: '#F8FAFC', borderBottom: `2px solid ${ERP.border}` }}>
-                            <tr className="text-uppercase" style={{ color: ERP.textSecondary, fontSize: '0.74rem', letterSpacing: '0.5px' }}>
-                              <th className="py-3 px-3 px-md-4">Date Issued</th>
-                              <th className="py-3 px-3 text-end">Amount (₹)</th>
-                              <th className="py-3 px-3 text-end">Deducted (₹)</th>
-                              <th className="py-3 px-3 text-end">Balance (₹)</th>
-                              <th className="py-3 px-3">Reason</th>
-                              <th className="py-3 px-3">Issued By</th>
-                              <th className="py-3 px-3 px-md-4 text-center">Status</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {filteredAdvances.length === 0 ? (
-                              <tr>
-                                <td colSpan="7" className="text-center py-5 text-muted">
-                                  <span className="fs-1 d-block mb-2 opacity-50">🏦</span>
-                                  No advance records match your criteria.
-                                </td>
-                              </tr>
-                            ) : filteredAdvances.map(a => (
-                              <tr key={a._id} className="erp-table-row" style={{ borderBottom: `1px solid ${ERP.border}` }}>
-                                <td className="py-3.5 px-3 px-md-4 small fw-semibold">
-                                  {new Date(a.issuedDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
-                                </td>
-                                <td className="py-3.5 px-3 text-end font-monospace fw-bold" style={{ color: ERP.sidebar }}>
-                                  ₹{(a.amount || 0).toLocaleString()}
-                                </td>
-                                <td className="py-3.5 px-3 text-end font-monospace fw-semibold" style={{ color: ERP.success }}>
-                                  {a.deductedAmount > 0 ? `₹${a.deductedAmount.toLocaleString()}` : '—'}
-                                </td>
-                                <td className="py-3.5 px-3 text-end font-monospace fw-bold" style={{ color: a.status !== 'Deducted' ? ERP.warning : ERP.success }}>
-                                  ₹{((a.amount || 0) - (a.deductedAmount || 0)).toLocaleString()}
-                                </td>
-                                <td className="py-3.5 px-3 small text-muted text-truncate" style={{ maxWidth: '240px' }}>{a.reason || '—'}</td>
-                                <td className="py-3.5 px-3 small">{a.issuedBy?.name || 'Admin'}</td>
-                                <td className="py-3.5 px-3 px-md-4 text-center">
-                                  <span 
-                                    className="badge px-2.5 py-1 fw-semibold rounded-pill"
-                                    style={{
-                                      backgroundColor: a.status === 'Deducted' ? '#DCFCE7' : a.status === 'Partial' ? '#EBF4FE' : '#FEF3C7',
-                                      color: a.status === 'Deducted' ? ERP.success : a.status === 'Partial' ? ERP.primary : ERP.warning,
-                                      border: `1px solid ${a.status === 'Deducted' ? '#BBF7D0' : a.status === 'Partial' ? '#BFDBFE' : '#FDE68A'}`
-                                    }}
-                                  >
-                                    {a.status}
-                                  </span>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  </div>
-                </>
-              )}
+              <div className="col-6 col-md-2">
+                <select
+                  className="erp-select"
+                  value={filterYear}
+                  onChange={(e) => setFilterYear(e.target.value)}
+                >
+                  <option value="">All Years</option>
+                  <option value="2025">2025</option>
+                  <option value="2026">2026</option>
+                  <option value="2027">2027</option>
+                </select>
+              </div>
             </>
           )}
 
+          <div className="col-6 col-md-3">
+            <select
+              className="erp-select"
+              value={filterStatus}
+              onChange={(e) => setFilterStatus(e.target.value)}
+            >
+              <option value="">All Statuses</option>
+              {activeTab === 'salaries' ? (
+                <>
+                  <option value="Paid">Paid</option>
+                  <option value="Draft">Draft</option>
+                </>
+              ) : (
+                <>
+                  <option value="Pending">Pending</option>
+                  <option value="Partial">Partial</option>
+                  <option value="Deducted">Deducted</option>
+                </>
+              )}
+            </select>
+          </div>
+
+          <div className="col-6 col-md text-end text-muted small">
+            <span>
+              Showing {activeTab === 'salaries' ? filteredSalaries.length : filteredAdvances.length} records
+            </span>
+          </div>
         </div>
       </div>
-    </>
+
+      {/* ── Data Tables ── */}
+      {loading ? (
+        <TableSkeleton rows={4} cols={7} />
+      ) : activeTab === 'salaries' ? (
+        filteredSalaries.length === 0 ? (
+          <div className="erp-card p-4">
+            <EmptyState
+              icon={FileText}
+              title="No salary slips found"
+              description="No monthly salary records match your filter criteria."
+            />
+          </div>
+        ) : (
+          <div className="erp-table-container">
+            <div className="table-responsive">
+              <table className="erp-table">
+                <thead>
+                  <tr>
+                    <th>Payroll Period</th>
+                    <th className="text-end">Base Pay</th>
+                    <th className="text-end">Attendance</th>
+                    <th className="text-end">Gross Salary</th>
+                    <th className="text-end">Advance Deductions</th>
+                    <th className="text-end">Net Payable</th>
+                    <th className="text-center">Status</th>
+                    <th className="text-center">Download Payslip</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredSalaries.map((s) => (
+                    <tr key={s._id}>
+                      <td>
+                        <span className="fw-semibold" style={{ color: 'var(--erp-text-main)' }}>
+                          {MONTHS[s.month - 1]} {s.year}
+                        </span>
+                      </td>
+
+                      <td className="text-end font-monospace">
+                        ₹{(s.baseSalary || 0).toLocaleString()}
+                      </td>
+
+                      <td className="text-end small">
+                        {s.presentDays} / {s.totalWorkingDays} days
+                      </td>
+
+                      <td className="text-end font-monospace">
+                        ₹{(s.grossSalary || 0).toFixed(2)}
+                      </td>
+
+                      <td className="text-end font-monospace text-danger fw-semibold">
+                        {s.advanceDeductions > 0 ? `- ₹${s.advanceDeductions.toFixed(2)}` : '—'}
+                      </td>
+
+                      <td className="text-end font-monospace fw-bold text-success" style={{ fontSize: '0.92rem' }}>
+                        ₹{(s.netSalary || 0).toFixed(2)}
+                      </td>
+
+                      <td className="text-center">
+                        <StatusBadge status={s.status || 'Draft'} size="sm" />
+                      </td>
+
+                      <td className="text-center">
+                        <button
+                          type="button"
+                          className="erp-btn erp-btn-secondary erp-btn-sm"
+                          onClick={() => handleDownloadSalaryPDF(s)}
+                          title="Download Official Payslip PDF"
+                        >
+                          <Download size={13} /> Payslip PDF
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )
+      ) : filteredAdvances.length === 0 ? (
+        <div className="erp-card p-4">
+          <EmptyState
+            icon={Wallet}
+            title="No salary advances on record"
+            description="You have no active salary advance records."
+          />
+        </div>
+      ) : (
+        <div className="erp-table-container">
+          <div className="table-responsive">
+            <table className="erp-table">
+              <thead>
+                <tr>
+                  <th>Issued Date</th>
+                  <th>Reason / Purpose</th>
+                  <th className="text-end">Advance Amount</th>
+                  <th className="text-end">Deducted / Repaid</th>
+                  <th className="text-end">Remaining Due</th>
+                  <th className="text-center">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredAdvances.map((a) => {
+                  const remaining = (a.amount || 0) - (a.deductedAmount || 0);
+
+                  return (
+                    <tr key={a._id}>
+                      <td>
+                        <div className="small fw-semibold">
+                          {new Date(a.issuedDate || a.createdAt).toLocaleDateString([], {
+                            month: 'short',
+                            day: 'numeric',
+                            year: 'numeric',
+                          })}
+                        </div>
+                      </td>
+
+                      <td>
+                        <div className="small text-truncate" style={{ maxWidth: '300px' }}>
+                          {a.reason || 'Salary advance'}
+                        </div>
+                      </td>
+
+                      <td className="text-end font-monospace fw-semibold">
+                        ₹{(a.amount || 0).toLocaleString()}
+                      </td>
+
+                      <td className="text-end font-monospace text-success">
+                        ₹{(a.deductedAmount || 0).toLocaleString()}
+                      </td>
+
+                      <td className="text-end font-monospace fw-bold text-danger">
+                        ₹{remaining.toLocaleString()}
+                      </td>
+
+                      <td className="text-center">
+                        <StatusBadge status={a.status || 'Pending'} size="sm" />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
   );
 };
 

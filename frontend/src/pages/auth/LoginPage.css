@@ -1,0 +1,281 @@
+/* ==========================================================================
+   SSE SATYA SAI ELECTRICALS - ENTERPRISE ERP LOGIN PAGE STYLES
+   Pixel-perfect match for Electrical Service Operations ERP Mockup
+   ========================================================================== */
+
+.sse-login-wrapper {
+  min-height: 100vh;
+  width: 100%;
+  position: relative;
+  overflow-x: hidden;
+  background-color: #f0f7ff;
+  background-image: 
+    linear-gradient(135deg, rgba(255, 255, 255, 0.42) 0%, rgba(240, 249, 255, 0.28) 50%, rgba(219, 234, 254, 0.45) 100%),
+    url('/login-bg.jpg');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+@media (max-width: 991px) {
+  .sse-login-wrapper {
+    background-attachment: scroll;
+  }
+}
+
+/* Fluid wave ribbons layered on top of background */
+.sse-wave-top {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: clamp(380px, 45vw, 680px);
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0.95;
+}
+
+.sse-wave-bottom {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: clamp(300px, 38vw, 560px);
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0.95;
+}
+
+/* Feature Cards (Service Operations, Ticket Dispatching, etc.) */
+.sse-feature-card {
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  border-radius: 16px;
+  padding: 16px 12px;
+  min-width: 95px;
+  max-width: 125px;
+  text-align: center;
+  box-shadow: 0 10px 25px -5px rgba(0, 82, 204, 0.08), 0 2px 6px -1px rgba(0, 0, 0, 0.03);
+  transition: transform 0.22s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.22s cubic-bezier(0.4, 0, 0.2, 1), background 0.22s ease;
+  cursor: default;
+  user-select: none;
+}
+
+.sse-feature-card:hover {
+  transform: translateY(-4px);
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 16px 32px -4px rgba(0, 82, 204, 0.16), 0 4px 10px -2px rgba(0, 0, 0, 0.05);
+}
+
+.sse-feature-icon-box {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: #eff6ff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 10px;
+  color: #0052cc;
+  transition: transform 0.2s ease, background-color 0.2s ease;
+}
+
+.sse-feature-card:hover .sse-feature-icon-box {
+  transform: scale(1.08);
+  background: #dbeafe;
+}
+
+.sse-feature-label {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #0f172a;
+  line-height: 1.35;
+  margin: 0;
+  white-space: pre-line;
+}
+
+/* Mobile feature cards */
+.sse-mobile-feature-card {
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.95);
+  border-radius: 14px;
+  padding: 12px 10px;
+  text-align: center;
+  box-shadow: 0 6px 18px -3px rgba(0, 82, 204, 0.08);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+}
+
+.sse-mobile-feature-card .sse-feature-icon-box {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  margin: 0;
+  flex-shrink: 0;
+}
+
+.sse-mobile-feature-card .sse-feature-label {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #0f172a;
+  line-height: 1.25;
+  white-space: normal;
+}
+
+/* Main Login Elevated Card */
+.sse-login-card {
+  background: #ffffff;
+  border-radius: 28px;
+  box-shadow: 0 25px 60px -15px rgba(15, 23, 42, 0.18), 0 0 0 1px rgba(0, 0, 0, 0.04);
+  padding: 38px 36px;
+  width: 100%;
+  max-width: 445px;
+  position: relative;
+  z-index: 2;
+  transition: box-shadow 0.25s ease;
+}
+
+@media (max-width: 576px) {
+  .sse-login-card {
+    border-radius: 22px;
+    padding: 26px 20px;
+    box-shadow: 0 15px 40px -10px rgba(15, 23, 42, 0.15);
+  }
+}
+
+/* Custom Input Field */
+.sse-input-container {
+  height: 48px;
+  background: #ffffff;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+}
+
+.sse-input-container:hover {
+  border-color: #cbd5e1;
+}
+
+.sse-input-container:focus-within {
+  border-color: #0052cc;
+  box-shadow: 0 0 0 3.5px rgba(0, 82, 204, 0.12);
+}
+
+.sse-input-field {
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  outline: none !important;
+  font-size: 14.5px !important;
+  color: #0f172a !important;
+  padding: 0 !important;
+  width: 100%;
+}
+
+.sse-input-field::placeholder {
+  color: #94a3b8;
+  font-size: 14px;
+}
+
+/* Prevent iOS input auto-zoom */
+@media screen and (-webkit-min-device-pixel-ratio: 0) {
+  .sse-input-field {
+    font-size: 16px !important;
+  }
+}
+
+/* Primary Sign In Button */
+.sse-btn-primary {
+  height: 48px;
+  background: linear-gradient(90deg, #0052cc 0%, #0066fe 100%);
+  border: none;
+  border-radius: 12px;
+  color: #ffffff;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  box-shadow: 0 6px 18px -3px rgba(0, 82, 204, 0.35);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  cursor: pointer;
+  width: 100%;
+}
+
+.sse-btn-primary:hover:not(:disabled) {
+  filter: brightness(1.06);
+  box-shadow: 0 10px 24px -3px rgba(0, 82, 204, 0.45);
+  transform: translateY(-1px);
+}
+
+.sse-btn-primary:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.sse-btn-primary:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+/* Quick Access Cards (Dev Login, Test Login, Admin Login) */
+.sse-quick-btn {
+  background: #f8fafc;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 10px 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  text-decoration: none;
+  width: 100%;
+}
+
+.sse-quick-btn:hover {
+  background: #eff6ff;
+  border-color: #93c5fd;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 14px -3px rgba(0, 82, 204, 0.12);
+}
+
+.sse-quick-btn.active-quick {
+  background: #eff6ff;
+  border-color: #0052cc;
+  box-shadow: 0 0 0 2px rgba(0, 82, 204, 0.15);
+}
+
+.sse-quick-btn .sse-quick-label {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #1e293b;
+  margin: 0;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  max-width: 100%;
+}
+
+@media (max-width: 400px) {
+  .sse-quick-btn {
+    padding: 8px 2px;
+  }
+  .sse-quick-btn .sse-quick-label {
+    font-size: 10.5px;
+  }
+}

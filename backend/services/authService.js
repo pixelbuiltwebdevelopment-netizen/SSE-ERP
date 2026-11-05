@@ -7,10 +7,17 @@ const MAX_FAILED_ATTEMPTS = 5;
 const LOCK_TIME_MS = 15 * 60 * 1000; // 15 minutes
 
 const loginUser = async ({ email, password, ipAddress, userAgent }) => {
-  const user = await User.findOne({ email: email.toLowerCase() }).select('+password');
+  const identifier = (email || '').trim();
+  // Match either email or employeeId
+  const user = await User.findOne({
+    $or: [
+      { email: identifier.toLowerCase() },
+      { employeeId: { $regex: new RegExp(`^${identifier.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')}$`, 'i') } },
+    ],
+  }).select('+password');
 
   if (!user) {
-    throw new ApiError(401, 'Invalid email or password');
+    throw new ApiError(401, 'Invalid email, employee ID or password');
   }
 
   if (!user.isActive) {

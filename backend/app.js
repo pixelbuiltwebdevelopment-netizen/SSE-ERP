@@ -22,9 +22,7 @@ require('./models/CalendarEvent');
 require('./models/Shift');
 require('./models/AttendancePolicy');
 require('./models/Attendance');
-require('./models/AttendanceCorrection');
 require('./models/OvertimeRequest');
-require('./models/Notification');
 
 // Route Imports
 const authRoutes = require('./routes/authRoutes');
@@ -39,7 +37,6 @@ const expenseRoutes = require('./routes/expenseRoutes');
 const leaveRoutes = require('./routes/leaveRoutes');
 const calendarRoutes = require('./routes/calendarRoutes');
 const salaryRoutes = require('./routes/salaryRoutes');
-const notificationRoutes = require('./routes/notificationRoutes');
 
 const app = express();
 
@@ -101,7 +98,6 @@ app.use('/api/expenses', expenseRoutes);
 app.use('/api/leaves', leaveRoutes);
 app.use('/api/calendar', calendarRoutes);
 app.use('/api/salary', salaryRoutes);
-app.use('/api/notifications', notificationRoutes);
 
 // Global Error Handler
 app.use(errorHandler);

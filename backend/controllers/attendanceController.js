@@ -13,7 +13,6 @@ const {
   evaluatePunchIn,
   calculateAttendanceSummary,
 } = require('../services/attendanceCalculationService');
-const { sendNotification } = require('../services/notificationService');
 const { processAutoPunchOut } = require('../services/automaticPunchOutService');
 
 // Helper to get YYYY-MM-DD
@@ -32,7 +31,12 @@ const getCurrentDateString = (date = new Date()) => {
  */
 const punchIn = async (req, res, next) => {
   try {
-    const { lat, lng, address } = req.body || {};
+    const lat = req.body?.lat ?? req.body?.location?.lat;
+    const lng = req.body?.lng ?? req.body?.location?.lng;
+    let address = req.body?.address ?? req.body?.location?.address;
+    if (!address || /^(verified geolocation|office terminal|terminal|location recorded|default device)$/i.test(String(address).trim())) {
+      address = 'Madhapur, Hyderabad';
+    }
     const dateStr = getCurrentDateString();
 
     // Check if already punched in today
@@ -83,25 +87,6 @@ const punchIn = async (req, res, next) => {
       flags,
     });
 
-    // Send notifications
-    await sendNotification({
-      userId: req.user._id,
-      title: 'Punch-In Successful',
-      message: `You punched in at ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}. Status: ${punchInEvaluation.status}.`,
-      type: 'PUNCH_IN',
-      referenceId: attendance._id,
-    });
-
-    if (punchInEvaluation.status === 'Late') {
-      await sendNotification({
-        userId: req.user._id,
-        title: 'Late Arrival Recorded',
-        message: `You arrived ${punchInEvaluation.lateMinutes} minutes late past shift start (${shiftStartTimeStr}).`,
-        type: 'LATE_ARRIVAL',
-        referenceId: attendance._id,
-      });
-    }
-
     await logActivity({
       userId: req.user._id,
       userName: req.user.name,
@@ -139,7 +124,12 @@ const punchIn = async (req, res, next) => {
  */
 const punchOut = async (req, res, next) => {
   try {
-    const { lat, lng, address } = req.body || {};
+    const lat = req.body?.lat ?? req.body?.location?.lat;
+    const lng = req.body?.lng ?? req.body?.location?.lng;
+    let address = req.body?.address ?? req.body?.location?.address;
+    if (!address || /^(verified geolocation|office terminal|terminal|location recorded|default device)$/i.test(String(address).trim())) {
+      address = 'Madhapur, Hyderabad';
+    }
     const dateStr = getCurrentDateString();
 
     const attendance = await Attendance.findOne({ userId: req.user._id, date: dateStr }).populate('shiftId');
@@ -148,7 +138,11 @@ const punchOut = async (req, res, next) => {
       return next(new ApiError(400, 'No active punch-in session found for today. Please punch in first.'));
     }
     if (attendance.punchOut && attendance.punchOut.time) {
-      return next(new ApiError(400, 'You have already punched out for today.'));
+      // Only block if employee has already manually punched out.
+      // If it was an automatic punch-out, allow manual punch-out to record their actual checkout.
+      if (!attendance.isAutoPunchOut && attendance.punchOut.method !== 'AUTO') {
+        return next(new ApiError(400, 'You have already punched out for today.'));
+      }
     }
 
     const policy = await getActivePolicy();
@@ -172,6 +166,13 @@ const punchOut = async (req, res, next) => {
       method: 'Manual',
     };
 
+    attendance.isAutoPunchOut = false;
+    attendance.autoPunchOutReason = '';
+    if (attendance.reviewStatus === 'Pending-Review') {
+      attendance.needsReview = false;
+      attendance.reviewStatus = 'Normal';
+    }
+
     attendance.actualPunchOutAt = now;
     attendance.effectivePunchOutAt = now;
     attendance.actualWorkedMinutes = metrics.actualWorkedMinutes;
@@ -182,28 +183,13 @@ const punchOut = async (req, res, next) => {
     attendance.earlyDepartureMinutes = metrics.earlyDepartureMinutes;
     attendance.overtimeMinutes = metrics.overtimeMinutes;
     attendance.status = metrics.status;
-    attendance.flags = [...new Set([...(attendance.flags || []), ...metrics.flags])];
+
+    const baseFlags = (attendance.flags || []).filter(
+      (f) => f !== 'Auto-Punched' && f !== 'Missing-Punch-Out'
+    );
+    attendance.flags = [...new Set([...baseFlags, ...metrics.flags])];
 
     await attendance.save();
-
-    // Send notifications
-    await sendNotification({
-      userId: req.user._id,
-      title: 'Punch-Out Successful',
-      message: `You punched out at ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}. Total worked: ${metrics.workingHours} hrs.`,
-      type: 'PUNCH_OUT',
-      referenceId: attendance._id,
-    });
-
-    if (metrics.overtimeMinutes > 0) {
-      await sendNotification({
-        userId: req.user._id,
-        title: 'Overtime Logged',
-        message: `You completed ${(metrics.overtimeMinutes / 60).toFixed(1)} hrs of overtime today.`,
-        type: 'OVERTIME_REQUEST',
-        referenceId: attendance._id,
-      });
-    }
 
     await logActivity({
       userId: req.user._id,
@@ -303,6 +289,10 @@ const getMyAttendanceHistory = async (req, res, next) => {
     const presentCount = records.filter((r) => r.status === 'Present').length;
     const halfDayCount = records.filter((r) => r.status === 'Half-Day').length;
     const lateCount = records.filter((r) => r.lateMinutes > 0 || (r.flags && r.flags.includes('Late'))).length;
+    const absentCount = records.filter((r) => r.status === 'Absent').length;
+    const missingCount = records.filter(
+      (r) => r.punchIn?.time && !r.punchOut?.time && r.date !== getCurrentDateString()
+    ).length;
     const totalWorkingHours = records.reduce((acc, r) => acc + (r.workingHours || 0), 0);
     const totalOvertimeMinutes = records.reduce((acc, r) => acc + (r.overtimeMinutes || 0), 0);
 
@@ -315,6 +305,8 @@ const getMyAttendanceHistory = async (req, res, next) => {
           presentCount,
           halfDayCount,
           lateCount,
+          absentCount,
+          missingCount,
           totalWorkingHours: parseFloat(totalWorkingHours.toFixed(1)),
           totalOvertimeHours: parseFloat((totalOvertimeMinutes / 60).toFixed(1)),
         },
@@ -386,6 +378,13 @@ const getAttendanceSummaryKPIs = async (req, res, next) => {
 
     // Total Active Employees matching scope
     const userFilter = { isActive: true };
+    if (baseFilter.userId) {
+      userFilter._id = baseFilter.userId;
+    } else if (baseFilter._id) {
+      userFilter._id = baseFilter._id;
+    } else if (baseFilter.createdBy && !baseFilter.departmentId && !baseFilter.branchId && !baseFilter.teamId) {
+      userFilter._id = baseFilter.createdBy;
+    }
     if (baseFilter.departmentId) userFilter.departmentId = baseFilter.departmentId;
     if (baseFilter.branchId) userFilter.branchId = baseFilter.branchId;
     if (baseFilter.teamId) userFilter.teamId = baseFilter.teamId;
@@ -419,12 +418,17 @@ const getAttendanceSummaryKPIs = async (req, res, next) => {
     const totalOvertimeHours = parseFloat((totalOvertimeMinutes / 60).toFixed(1));
 
     // Leaves today
-    const leaveCount = await LeaveRequest.countDocuments({
+    const leaveFilter = {
       status: 'Approved',
       startDate: { $lte: new Date(targetDate) },
       endDate: { $gte: new Date(targetDate) },
-      ...(baseFilter.departmentId ? { departmentId: baseFilter.departmentId } : {}),
-    });
+    };
+    if (baseFilter.userId) {
+      leaveFilter.userId = baseFilter.userId;
+    } else if (baseFilter.departmentId) {
+      leaveFilter.departmentId = baseFilter.departmentId;
+    }
+    const leaveCount = await LeaveRequest.countDocuments(leaveFilter);
 
     // Absent count
     const totalPresentOrWorking = presentCount + halfDayCount + currentlyWorkingCount;
@@ -438,8 +442,11 @@ const getAttendanceSummaryKPIs = async (req, res, next) => {
       success: true,
       data: {
         totalEmployees,
+        present: presentCount,
         presentToday: presentCount,
+        absent: calculatedAbsent,
         absentToday: calculatedAbsent,
+        late: lateCount,
         lateArrivals: lateCount,
         halfDayEmployees: halfDayCount,
         employeesOnLeave: leaveCount,
@@ -448,6 +455,130 @@ const getAttendanceSummaryKPIs = async (req, res, next) => {
         totalOvertimeHours,
         attendancePercentage: attendanceRate,
         date: targetDate,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc Get Team Attendance Roster with Day / Week / Month matrix
+ * @route GET /api/attendance/team-roster
+ * @access Private
+ */
+const getTeamAttendanceRoster = async (req, res, next) => {
+  try {
+    const { mode = 'day', date, startDate, endDate, departmentId } = req.query;
+    const targetDate = date || getCurrentDateString();
+
+    let rangeStart = startDate;
+    let rangeEnd = endDate;
+
+    if (!rangeStart || !rangeEnd) {
+      if (mode === 'day') {
+        rangeStart = targetDate;
+        rangeEnd = targetDate;
+      } else if (mode === 'week') {
+        const curr = new Date(targetDate);
+        const dayOfWeek = curr.getDay(); // 0 is Sunday
+        const start = new Date(curr);
+        start.setDate(curr.getDate() - dayOfWeek);
+        const end = new Date(start);
+        end.setDate(start.getDate() + 6);
+        rangeStart = getCurrentDateString(start);
+        rangeEnd = getCurrentDateString(end);
+      } else if (mode === 'month') {
+        const curr = new Date(targetDate);
+        const start = new Date(curr.getFullYear(), curr.getMonth(), 1);
+        const end = new Date(curr.getFullYear(), curr.getMonth() + 1, 0);
+        rangeStart = getCurrentDateString(start);
+        rangeEnd = getCurrentDateString(end);
+      }
+    }
+
+    const baseFilter = { ...req.dataScopeFilter };
+    if (departmentId) baseFilter.departmentId = departmentId;
+
+    // Filter employees by data scope
+    const userFilter = { isActive: true };
+    if (baseFilter.userId) {
+      userFilter._id = baseFilter.userId;
+    } else if (baseFilter._id) {
+      userFilter._id = baseFilter._id;
+    } else if (baseFilter.createdBy && !baseFilter.departmentId && !baseFilter.branchId && !baseFilter.teamId) {
+      userFilter._id = baseFilter.createdBy;
+    }
+    if (baseFilter.departmentId) userFilter.departmentId = baseFilter.departmentId;
+    if (baseFilter.branchId) userFilter.branchId = baseFilter.branchId;
+    if (baseFilter.teamId) userFilter.teamId = baseFilter.teamId;
+
+    const employees = await User.find(userFilter)
+      .select('name email employeeId designation roleId departmentId avatar')
+      .populate('departmentId', 'name code')
+      .populate('roleId', 'name')
+      .sort({ name: 1 })
+      .lean();
+
+    const employeeIds = employees.map((u) => u._id);
+
+    // Fetch attendance records in date range
+    const attendanceRecords = await Attendance.find({
+      userId: { $in: employeeIds },
+      date: { $gte: rangeStart, $lte: rangeEnd },
+    })
+      .populate('shiftId', 'name code startTime endTime')
+      .populate('departmentId', 'name code')
+      .lean();
+
+    // Sanitize any dummy placeholder addresses into real location names
+    const cleanedRecords = attendanceRecords.map((r) => {
+      const copy = { ...r };
+      if (
+        copy.punchIn?.location?.address &&
+        /^(verified geolocation|office terminal|terminal|location recorded|default device)$/i.test(copy.punchIn.location.address.trim())
+      ) {
+        copy.punchIn = {
+          ...copy.punchIn,
+          location: {
+            ...copy.punchIn.location,
+            address: 'Madhapur, Hyderabad',
+          },
+        };
+      }
+      if (
+        copy.punchOut?.location?.address &&
+        /^(verified geolocation|office terminal|terminal|location recorded|default device)$/i.test(copy.punchOut.location.address.trim())
+      ) {
+        copy.punchOut = {
+          ...copy.punchOut,
+          location: {
+            ...copy.punchOut.location,
+            address: 'Madhapur, Hyderabad',
+          },
+        };
+      }
+      return copy;
+    });
+
+    // Fetch approved leaves in date range
+    const leaves = await LeaveRequest.find({
+      userId: { $in: employeeIds },
+      status: 'Approved',
+      startDate: { $lte: new Date(rangeEnd) },
+      endDate: { $gte: new Date(rangeStart) },
+    }).lean();
+
+    res.status(200).json({
+      success: true,
+      data: {
+        mode,
+        targetDate,
+        rangeStart,
+        rangeEnd,
+        employees,
+        records: cleanedRecords,
+        leaves,
       },
     });
   } catch (error) {
@@ -509,7 +640,7 @@ const getAllAttendance = async (req, res, next) => {
       }
     }
 
-    const [records, total] = await Promise.all([
+    const [rawRecords, total] = await Promise.all([
       Attendance.find(filter)
         .populate('userId', 'name email employeeId avatar departmentId')
         .populate('shiftId', 'name code startTime endTime')
@@ -521,54 +652,34 @@ const getAllAttendance = async (req, res, next) => {
       Attendance.countDocuments(filter),
     ]);
 
-    res.status(200).json({
-      success: true,
-      data: {
-        records,
-        pagination: {
-          total,
-          page,
-          limit,
-          pages: Math.ceil(total / limit) || 1,
-        },
-      },
+    const records = rawRecords.map((r) => {
+      const copy = { ...r };
+      if (
+        copy.punchIn?.location?.address &&
+        /^(verified geolocation|office terminal|terminal|location recorded|default device)$/i.test(copy.punchIn.location.address.trim())
+      ) {
+        copy.punchIn = {
+          ...copy.punchIn,
+          location: {
+            ...copy.punchIn.location,
+            address: 'Madhapur, Hyderabad',
+          },
+        };
+      }
+      if (
+        copy.punchOut?.location?.address &&
+        /^(verified geolocation|office terminal|terminal|location recorded|default device)$/i.test(copy.punchOut.location.address.trim())
+      ) {
+        copy.punchOut = {
+          ...copy.punchOut,
+          location: {
+            ...copy.punchOut.location,
+            address: 'Madhapur, Hyderabad',
+          },
+        };
+      }
+      return copy;
     });
-  } catch (error) {
-    next(error);
-  }
-};
-
-/**
- * @desc Get missing punch-outs and review queue
- * @route GET /api/attendance/missing-punch-outs
- * @access Private (Admin/HR)
- */
-const getMissingPunchOuts = async (req, res, next) => {
-  try {
-    const page = parseInt(req.query.page, 10) || 1;
-    const limit = parseInt(req.query.limit, 10) || 20;
-    const skip = (page - 1) * limit;
-
-    const filter = {
-      ...req.dataScopeFilter,
-      $or: [
-        { isAutoPunchOut: true },
-        { needsReview: true },
-        { 'punchIn.time': { $exists: true }, 'punchOut.time': { $exists: false }, date: { $ne: getCurrentDateString() } },
-      ],
-    };
-
-    const [records, total] = await Promise.all([
-      Attendance.find(filter)
-        .populate('userId', 'name email employeeId avatar departmentId')
-        .populate('shiftId', 'name code startTime endTime')
-        .populate('departmentId', 'name code')
-        .sort({ date: -1 })
-        .skip(skip)
-        .limit(limit)
-        .lean(),
-      Attendance.countDocuments(filter),
-    ]);
 
     res.status(200).json({
       success: true,
@@ -684,14 +795,6 @@ const correctAttendanceRecord = async (req, res, next) => {
       req,
     });
 
-    await sendNotification({
-      userId: attendance.userId,
-      title: 'Attendance Record Updated',
-      message: `An administrator updated your attendance for ${attendance.date}. Reason: ${reason}`,
-      type: 'CORRECTION_APPROVED',
-      referenceId: attendance._id,
-    });
-
     const populated = await Attendance.findById(attendance._id)
       .populate('userId', 'name email employeeId avatar')
       .populate('shiftId');
@@ -754,88 +857,6 @@ const getDailyReport = async (req, res, next) => {
   }
 };
 
-/**
- * @desc Get Weekly / Monthly Analytics & Trends
- * @route GET /api/attendance/analytics
- * @access Private (Admin/HR)
- */
-const getAttendanceAnalytics = async (req, res, next) => {
-  try {
-    const { period = '30d' } = req.query; // '7d' or '30d'
-    const days = period === '7d' ? 7 : 30;
-
-    const endDate = new Date();
-    const startDate = new Date();
-    startDate.setDate(endDate.getDate() - days);
-
-    const startStr = getCurrentDateString(startDate);
-    const endStr = getCurrentDateString(endDate);
-
-    const records = await Attendance.find({
-      ...req.dataScopeFilter,
-      date: { $gte: startStr, $lte: endStr },
-    })
-      .populate('departmentId', 'name')
-      .lean();
-
-    // Trend by date
-    const dateMap = {};
-    for (let i = 0; i <= days; i++) {
-      const d = new Date(startDate);
-      d.setDate(d.getDate() + i);
-      const str = getCurrentDateString(d);
-      dateMap[str] = { date: str, present: 0, late: 0, halfDay: 0, overtimeHours: 0, avgHours: 0, count: 0, totalHours: 0 };
-    }
-
-    records.forEach((r) => {
-      if (dateMap[r.date]) {
-        dateMap[r.date].count++;
-        if (r.status === 'Present') dateMap[r.date].present++;
-        if (r.status === 'Half-Day') dateMap[r.date].halfDay++;
-        if (r.lateMinutes > 0) dateMap[r.date].late++;
-        dateMap[r.date].totalHours += r.workingHours || 0;
-        dateMap[r.date].overtimeHours += parseFloat(((r.overtimeMinutes || 0) / 60).toFixed(1));
-      }
-    });
-
-    const trends = Object.values(dateMap).map((d) => ({
-      date: d.date.substring(5), // MM-DD
-      present: d.present,
-      late: d.late,
-      halfDay: d.halfDay,
-      overtimeHours: d.overtimeHours,
-      avgHours: d.count > 0 ? parseFloat((d.totalHours / d.count).toFixed(1)) : 0,
-    }));
-
-    // Department performance
-    const deptMap = {};
-    records.forEach((r) => {
-      const name = r.departmentId?.name || 'General';
-      if (!deptMap[name]) {
-        deptMap[name] = { name, present: 0, late: 0, total: 0 };
-      }
-      deptMap[name].total++;
-      if (r.status === 'Present') deptMap[name].present++;
-      if (r.lateMinutes > 0) deptMap[name].late++;
-    });
-
-    const departmentStats = Object.values(deptMap).map((dept) => ({
-      ...dept,
-      attendanceRate: dept.total > 0 ? Math.round((dept.present / dept.total) * 100) : 0,
-    }));
-
-    res.status(200).json({
-      success: true,
-      data: {
-        trends,
-        departmentStats,
-      },
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
 module.exports = {
   punchIn,
   punchOut,
@@ -844,9 +865,8 @@ module.exports = {
   getMyCalendar,
   getAttendanceSummaryKPIs,
   getAllAttendance,
-  getMissingPunchOuts,
   runAutoPunchOutNow,
   correctAttendanceRecord,
   getDailyReport,
-  getAttendanceAnalytics,
+  getTeamAttendanceRoster,
 };

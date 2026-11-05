@@ -18,7 +18,7 @@ connectDB().then(() => {
   // Initialize Socket.IO
   initSocket(server);
 
-  server.listen(PORT, () => {
+  server.listen(PORT, '0.0.0.0', () => {
     console.log(`[ERP Authorization Server Running]: Port=${PORT}, Env=${process.env.NODE_ENV || 'development'}`);
   });
 });

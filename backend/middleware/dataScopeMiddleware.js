@@ -9,14 +9,16 @@ const applyDataScope = (moduleKey, actionKey) => {
   return (req, res, next) => {
     let scope = req.actionScope;
 
-    if (!scope) {
-      const permResult = hasPermission(req.user.roleId, moduleKey, actionKey);
+    const targetModule = (req.query && req.query.module) ? req.query.module : moduleKey;
+
+    if (!scope || (req.query && req.query.module)) {
+      const permResult = hasPermission(req.user.roleId, targetModule, actionKey);
       scope = permResult.scope || 'OWN';
     }
 
     req.dataScopeFilter = buildDataScopeFilter({
       user: req.user,
-      moduleKey,
+      moduleKey: targetModule,
       actionKey,
       scope,
     });

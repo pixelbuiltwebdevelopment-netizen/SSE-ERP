@@ -1,6 +1,22 @@
 const { body } = require('express-validator');
 
 const validatePunch = [
+  body().custom((value, { req }) => {
+    // Unnest location if passed as nested object
+    if (req.body && req.body.location && typeof req.body.location === 'object') {
+      if (req.body.lat === undefined && req.body.location.lat !== undefined) {
+        req.body.lat = req.body.location.lat;
+      }
+      if (req.body.lng === undefined && req.body.location.lng !== undefined) {
+        req.body.lng = req.body.location.lng;
+      }
+      if (req.body.address === undefined && req.body.location.address !== undefined) {
+        req.body.address = req.body.location.address;
+      }
+    }
+    return true;
+  }),
+
   body('lat')
     .notEmpty()
     .withMessage('Latitude (lat) is required')

@@ -632,7 +632,7 @@ const AdminSalaryDashboard = () => {
 
         .erp-filter-panel {
           background: #FFFFFF;
-          border: 1px solid #E2E8F0;
+          border: none;
           border-radius: 16px;
           box-shadow: 0 4px 20px rgba(7, 26, 51, 0.05);
           transition: box-shadow 0.2s ease;
@@ -764,16 +764,13 @@ const AdminSalaryDashboard = () => {
       `}</style>
 
       {/* Main Page Container */}
-      <div 
-        className="w-100 px-3 px-sm-4 px-md-5 py-4 py-md-5 erp-dashboard-fade"
-        style={{ backgroundColor: ERP.mainBg, minHeight: '100vh', color: ERP.textPrimary }}
-      >
-        <div className="mx-auto" style={{ maxWidth: '1400px' }}>
+      <div className="erp-fade-in pb-4">
+        <div>
           
           {/* Header Banner Section */}
           <div
             className="d-flex flex-column flex-sm-row justify-content-between align-items-start align-items-sm-center gap-3 mb-4 p-4 rounded-4 shadow-sm erp-card-elevated"
-            style={{ backgroundColor: ERP.cardBg, border: `1px solid ${ERP.border}` }}
+            style={{ backgroundColor: ERP.cardBg, border: 'none' }}
           >
             <div className="pe-sm-3">
               <div className="d-flex align-items-center gap-2 mb-2">
@@ -816,7 +813,7 @@ const AdminSalaryDashboard = () => {
           {/* Tab Navigation Section */}
           <div 
             className="d-flex flex-wrap align-items-center gap-1.5 mb-4 p-1.5 rounded-3 shadow-sm"
-            style={{ backgroundColor: ERP.cardBg, border: `1px solid ${ERP.border}`, width: 'fit-content' }}
+            style={{ backgroundColor: ERP.cardBg, border: 'none', width: 'fit-content' }}
           >
             {[
               { id: 'salaries', label: 'Salary Ledger', icon: '📑' },
